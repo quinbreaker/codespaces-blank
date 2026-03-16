@@ -1,0 +1,478 @@
+import random
+import os
+import time
+from collections import Counter
+
+# --- Configuration & Constants ---
+SUITS = ['♠', '♥', '♦', '♣']
+RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+VALUES = {r: i + 2 for i, r in enumerate(RANKS)} 
+BJ_VALUES = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
+    'J': 10, 'Q': 10, 'K': 10, 'A': 11
+}
+
+# --- Achievement Database ---
+ACHIEVEMENTS_DB = {
+    # --- Original ---
+    "first_win":       {"title": "First of many",         "desc": "Win your first game."},
+    "blackjack":       {"title": "First Try",             "desc": "Get a Blackjack."},
+    "high_roller":     {"title": "Lucky Duck",            "desc": "Accumulate over $2,500."},
+    "debt_trap":       {"title": "In a hole keep digging","desc": "Owe the bank more than $2,000."},
+    "poker_star":      {"title": "Emmett's Lie",          "desc": "Win a Poker hand with Three of a Kind or better."},
+    "debt_free":       {"title": "You'll always be back", "desc": "Pay off a debt completely."},
+    
+    # --- New Achievements (12 Added) ---
+    "broke_status":    {"title": "Rock Bottom",           "desc": "Reach a wallet balance of $0."},
+    "whale":           {"title": "The Whale",             "desc": "Accumulate $5,000."},
+    "tiny_bet":        {"title": "Penny Pincher",         "desc": "Bet less than $10."},
+    "big_spender":     {"title": "Big Spender",           "desc": "Bet $500 or more in a single game."},
+    "blackjack_push":  {"title": "Stalemate",             "desc": "Tie with the Dealer in Blackjack."},
+    "five_card":       {"title": "Five Card Charlie",     "desc": "Hold 5 cards in Blackjack without busting."},
+    "bj_bust":         {"title": "Too Greedy",            "desc": "Bust in Blackjack."},
+    "poker_flush":     {"title": "Flush Master",          "desc": "Get a Flush or Straight Flush."},
+    "poker_fullhouse": {"title": "Full Boat",             "desc": "Get a Full House."},
+    "bluff_master":    {"title": "Bluff Master",          "desc": "Win at Poker with only a High Card."},
+    "total_swap":      {"title": "Indecisive",            "desc": "Discard and redraw all 5 cards in Poker."},
+    "loan_addict":     {"title": "Digging Deeper",        "desc": "Take a loan while already in debt."}
+}
+
+# --- Visual Utilities ---
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def print_header(title):
+    print("=" * 60)
+    print(f"{title.center(60)}")
+    print("=" * 60)
+
+# --- Class Definitions ---
+
+class Card:
+    def __init__(self, suit, rank):
+        self.suit = suit
+        self.rank = rank
+        self.value = VALUES[rank]
+
+    def __str__(self):
+        return f"{self.rank}{self.suit}"
+
+    def display_lines(self):
+        r = self.rank.ljust(2)
+        return [
+            "┌─────────┐",
+            f"│ {r}      │",
+            f"│    {self.suit}    │",
+            f"│      {r} │",
+            "└─────────┘"
+        ]
+
+class Deck:
+    def __init__(self):
+        self.cards = [Card(s, r) for s in SUITS for r in RANKS]
+        self.shuffle()
+
+    def shuffle(self):
+        random.shuffle(self.cards)
+
+    def deal(self):
+        if not self.cards:
+            return None
+        return self.cards.pop()
+
+class Player:
+    def __init__(self, name="Player", money=1000):
+        self.name = name
+        self.money = money
+        self.loan_debt = 0
+        self.hand = []
+        self.unlocked_achievements = set() 
+
+    def print_status(self):
+        print(f"💰 Wallet: ${self.money} | 🏦 Debt: ${self.loan_debt}")
+        print(f"🏆 Achievements: {len(self.unlocked_achievements)}/{len(ACHIEVEMENTS_DB)}")
+
+    def unlock_achievement(self, key):
+        """Checks and unlocks an achievement if not already owned."""
+        if key in ACHIEVEMENTS_DB and key not in self.unlocked_achievements:
+            self.unlocked_achievements.add(key)
+            data = ACHIEVEMENTS_DB[key]
+            print("\n" + "*" * 50)
+            print(f"🏆 ACHIEVEMENT UNLOCKED: {data['title']} 🏆")
+            print(f"   {data['desc']}")
+            print("*" * 50 + "\n")
+            time.sleep(2)
+
+    def check_passive_achievements(self):
+        """Checks achievements based on stats (money/debt)."""
+        if self.money >= 2500:
+            self.unlock_achievement("high_roller")
+        if self.money >= 5000:
+            self.unlock_achievement("whale") # NEW: The Whale
+        if self.money == 0:
+            self.unlock_achievement("broke_status") # NEW: Rock Bottom
+        if self.loan_debt > 2000:
+            self.unlock_achievement("debt_trap")
+
+    def take_loan(self, amount):
+        if self.loan_debt > 0:
+            self.unlock_achievement("loan_addict") # NEW: Digging Deeper
+            
+        self.money += amount
+        self.loan_debt += amount
+        print(f"\n[BANK] You borrowed ${amount}.")
+        self.check_passive_achievements()
+
+    def repay_loan(self, amount):
+        if amount > self.money:
+            print("[BANK] You don't have enough cash!")
+        elif amount > self.loan_debt:
+            actual_pay = self.loan_debt
+            self.money -= actual_pay
+            self.loan_debt = 0
+            print(f"[BANK] Debt fully paid! Returned ${actual_pay}.")
+            self.unlock_achievement("debt_free")
+        else:
+            self.money -= amount
+            self.loan_debt -= amount
+            print(f"[BANK] Paid ${amount}. Remaining debt: ${self.loan_debt}")
+            if self.loan_debt == 0:
+                self.unlock_achievement("debt_free")
+        self.check_passive_achievements()
+
+def show_hands(player_hand, dealer_hand, hide_dealer_card=False):
+    # Prepare Dealer Hand
+    dealer_lines = [""] * 5
+    if not dealer_hand:
+        visible_cards = []
+    elif hide_dealer_card:
+        card_back = [
+            "┌─────────┐", 
+            "│░░░░░░░░░│", 
+            "│░░░???░░░│", 
+            "│░░░░░░░░░│", 
+            "└─────────┘"
+        ]
+        visible_cards = [card_back] + [c.display_lines() for c in dealer_hand[1:]]
+    else:
+        visible_cards = [c.display_lines() for c in dealer_hand]
+
+    if visible_cards:
+        print("\n--- DEALER'S HAND ---")
+        for i in range(5):
+            line_str = " ".join([card[i] for card in visible_cards])
+            print(line_str)
+
+    # Prepare Player Hand
+    print(f"\n--- YOUR HAND ---")
+    player_card_lines = [c.display_lines() for c in player_hand]
+    for i in range(5):
+        line_str = " ".join([card[i] for card in player_card_lines])
+        print(line_str)
+    print("")
+
+# --- Game Logic: Blackjack ---
+
+def calculate_bj_score(hand):
+    score = 0
+    aces = 0
+    for card in hand:
+        score += BJ_VALUES[card.rank]
+        if card.rank == 'A':
+            aces += 1
+     
+    while score > 21 and aces:
+        score -= 10
+        aces -= 1
+    return score
+
+def play_blackjack(player):
+    deck = Deck()
+    clear_screen()
+    print_header("BLACKJACK")
+    
+    while True:
+        try:
+            player.print_status()
+            bet = int(input(f"Place your bet (Max ${player.money}): "))
+            if 0 < bet <= player.money:
+                break
+            print("Invalid bet amount.")
+        except ValueError:
+            print("Please enter a number.")
+            
+    # NEW: Bet size achievements
+    if bet < 10: player.unlock_achievement("tiny_bet")
+    if bet >= 500: player.unlock_achievement("big_spender")
+
+    player_hand = [deck.deal(), deck.deal()]
+    dealer_hand = [deck.deal(), deck.deal()]
+    game_over = False
+
+    while not game_over:
+        clear_screen()
+        print_header("BLACKJACK TABLE")
+        show_hands(player_hand, dealer_hand, hide_dealer_card=True)
+        
+        p_score = calculate_bj_score(player_hand)
+        print(f"Your Score: {p_score}")
+        
+        # NEW: Five Card Charlie Check
+        if len(player_hand) >= 5 and p_score <= 21:
+            player.unlock_achievement("five_card")
+        
+        if p_score == 21:
+            print("Blackjack! 21!")
+            player.unlock_achievement("blackjack")
+            break
+        elif p_score > 21:
+            print("Bust! You went over 21.")
+            player.unlock_achievement("bj_bust") # NEW: Bust achievement
+            player.money -= bet
+            input("\nPress Enter to continue...")
+            player.check_passive_achievements() # Check broke status
+            return
+
+        choice = input("(H)it or (S)tand? ").lower()
+        if choice == 'h':
+            player_hand.append(deck.deal())
+        elif choice == 's':
+            break
+
+    # Dealer Turn
+    clear_screen()
+    print_header("BLACKJACK SHOWDOWN")
+    show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+    
+    p_score = calculate_bj_score(player_hand)
+    d_score = calculate_bj_score(dealer_hand)
+
+    while d_score < 17:
+        print("Dealer hits...")
+        time.sleep(1)
+        dealer_hand.append(deck.deal())
+        clear_screen()
+        print_header("BLACKJACK SHOWDOWN")
+        show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+        d_score = calculate_bj_score(dealer_hand)
+    
+    print(f"Your Score: {p_score} | Dealer Score: {d_score}")
+    
+    if d_score > 21:
+        print("Dealer Busted! You Win!")
+        player.money += bet
+        player.unlock_achievement("first_win")
+    elif d_score > p_score:
+        print("Dealer Wins.")
+        player.money -= bet
+    elif d_score < p_score:
+        print("You Win!")
+        player.money += bet
+        player.unlock_achievement("first_win")
+    else:
+        print("Push (Tie). Money returned.")
+        player.unlock_achievement("blackjack_push") # NEW: Tie achievement
+
+    player.check_passive_achievements()
+    input("\nPress Enter to return to menu...")
+
+# --- Game Logic: 5-Card Draw Poker ---
+
+def evaluate_poker_hand(hand):
+    ranks = sorted([c.value for c in hand])
+    suits = [c.suit for c in hand]
+    count = Counter(ranks)
+    counts = sorted(count.items(), key=lambda x: (-x[1], -x[0]))
+    
+    is_flush = len(set(suits)) == 1
+    is_straight = (ranks[-1] - ranks[0] == 4) and (len(set(ranks)) == 5)
+    if not is_straight and set(ranks) == {14, 2, 3, 4, 5}:
+        is_straight = True
+        ranks = [1, 2, 3, 4, 5]
+
+    if is_straight and is_flush: return (9, "Straight Flush", ranks)
+    if counts[0][1] == 4: return (8, "Four of a Kind", counts)
+    if counts[0][1] == 3 and counts[1][1] == 2: return (7, "Full House", counts)
+    if is_flush: return (6, "Flush", ranks)
+    if is_straight: return (5, "Straight", ranks)
+    if counts[0][1] == 3: return (4, "Three of a Kind", counts)
+    if counts[0][1] == 2 and counts[1][1] == 2: return (3, "Two Pair", counts)
+    if counts[0][1] == 2: return (2, "One Pair", counts)
+    return (1, "High Card", ranks)
+
+def play_poker(player):
+    deck = Deck()
+    clear_screen()
+    print_header("5-CARD DRAW POKER")
+
+    while True:
+        try:
+            player.print_status()
+            bet = int(input(f"Place your ante (Max ${player.money}): "))
+            if 0 < bet <= player.money:
+                break
+            print("Invalid bet amount.")
+        except ValueError:
+            print("Please enter a number.")
+
+    # NEW: Bet size achievements
+    if bet < 10: player.unlock_achievement("tiny_bet")
+    if bet >= 500: player.unlock_achievement("big_spender")
+
+    player_hand = [deck.deal() for _ in range(5)]
+    dealer_hand = [deck.deal() for _ in range(5)]
+
+    # Draw Phase
+    clear_screen()
+    print_header("POKER - DRAW PHASE")
+    show_hands(player_hand, [], hide_dealer_card=False)
+    
+    print("Which cards to discard? (e.g., '1 3 5'). Press Enter to keep all.")
+    choice = input("Indices (1-5): ")
+    
+    if choice.strip():
+        try:
+            indices = [int(i)-1 for i in choice.split()]
+            # NEW: Discard all cards achievement
+            if len(indices) == 5:
+                player.unlock_achievement("total_swap")
+
+            indices.sort(reverse=True)
+            for idx in indices:
+                if 0 <= idx < 5:
+                    player_hand.pop(idx)
+            while len(player_hand) < 5:
+                player_hand.append(deck.deal())
+        except ValueError:
+            print("Invalid input, keeping hand.")
+
+    # Showdown
+    clear_screen()
+    print_header("POKER - SHOWDOWN")
+    show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+
+    p_score, p_desc, p_tie = evaluate_poker_hand(player_hand)
+    d_score, d_desc, d_tie = evaluate_poker_hand(dealer_hand)
+
+    print(f"You have: {p_desc}")
+    print(f"Dealer has: {d_desc}")
+    print("-" * 30)
+
+    # NEW & EXISTING: Poker Hand Achievements
+    if p_score >= 4:
+         player.unlock_achievement("poker_star")
+    if p_score >= 6: 
+        player.unlock_achievement("poker_flush") # NEW: Flush or better
+    if p_score == 7:
+        player.unlock_achievement("poker_fullhouse") # NEW: Full House
+
+    if p_score > d_score:
+        print(f"You Win ${bet}!")
+        player.money += bet
+        player.unlock_achievement("first_win")
+        # NEW: Win with High Card (Score 1)
+        if p_score == 1:
+            player.unlock_achievement("bluff_master")
+    elif d_score > p_score:
+        print("Dealer Wins.")
+        player.money -= bet
+    else:
+        if p_tie > d_tie:
+            print(f"You Win ${bet} (Kicker)!")
+            player.money += bet
+            player.unlock_achievement("first_win")
+            # NEW: Win with High Card via kicker
+            if p_score == 1:
+                player.unlock_achievement("bluff_master")
+        elif d_tie > p_tie:
+            print("Dealer Wins (Kicker).")
+            player.money -= bet
+        else:
+            print("It's a complete tie.")
+
+    player.check_passive_achievements()
+    input("\nPress Enter to continue...")
+
+# --- Menus & System ---
+
+def show_rules():
+    clear_screen()
+    print_header("HOUSE RULES")
+    print("""
+    1. GENERAL
+       - This is a simulation using virtual currency.
+    
+    2. BLACKJACK
+       - Goal: Get 21.
+    
+    3. POKER (5-Card Draw)
+       - Best hand ranking wins.
+    """)
+    input("Press Enter to go back...")
+
+def view_achievements(player):
+    clear_screen()
+    print_header("🏆 ACHIEVEMENTS 🏆")
+    
+    for key, data in ACHIEVEMENTS_DB.items():
+        status = "✅ UNLOCKED" if key in player.unlocked_achievements else "🔒 LOCKED"
+        print(f"{status} - {data['title']}")
+        print(f"   {data['desc']}")
+        print("-" * 30)
+        
+    print(f"\nTotal: {len(player.unlocked_achievements)}/{len(ACHIEVEMENTS_DB)}")
+    input("\nPress Enter to return...")
+
+def loan_menu(player):
+    while True:
+        clear_screen()
+        print_header("THE LOAN SHARK")
+        player.print_status()
+        print("\n1. Borrow $500")
+        print("2. Borrow $1000")
+        print("3. Pay back $500")
+        print("4. Pay back ALL debt")
+        print("5. Exit Bank")
+        
+        choice = input("\nSelect Option: ")
+        
+        if choice == '1': player.take_loan(500)
+        elif choice == '2': player.take_loan(1000)
+        elif choice == '3': player.repay_loan(500)
+        elif choice == '4': player.repay_loan(player.loan_debt)
+        elif choice == '5': break
+        
+        time.sleep(1)
+
+def main():
+    player = Player()
+    
+    while True:
+        clear_screen()
+        print_header("PYTHON CASINO SIMULATOR")
+        player.print_status()
+        print("\n1. Play Blackjack")
+        print("2. Play Poker (5-Card Draw)")
+        print("3. Read Rules")
+        print("4. Visit Loan Shark")
+        print("5. View Achievements") 
+        print("6. Quit")
+        
+        choice = input("\nSelect Option: ")
+        
+        if choice == '1':
+            play_blackjack(player)
+        elif choice == '2':
+            play_poker(player)
+        elif choice == '3':
+            show_rules()
+        elif choice == '4':
+            loan_menu(player)
+        elif choice == '5':
+            view_achievements(player)
+        elif choice == '6':
+            print("Thanks for playing! Goodbye.")
+            break
+
+if __name__ == "__main__":
+    main()

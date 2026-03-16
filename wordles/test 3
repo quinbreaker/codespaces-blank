@@ -1,0 +1,272 @@
+import random
+import json
+import os
+import urllib.request
+from colorama import Fore, Back, Style, init
+
+# Initialize colorama
+init(autoreset=True)
+
+STATS_FILE = "wordle_stats.json"
+DICT_FILE = "words_alpha.txt"
+DICT_URL = "https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt"
+
+def clear_screen():
+    """Clears the terminal screen across different operating systems."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def load_stats():
+    """Loads stats from a JSON file, or creates default stats if none exist."""
+    if os.path.exists(STATS_FILE):
+        with open(STATS_FILE, "r") as file:
+            return json.load(file)
+    return {"games_played": 0, "wins": 0, "losses": 0, "achievements": []}
+
+def save_stats(stats):
+    """Saves the current stats to a JSON file."""
+    with open(STATS_FILE, "w") as file:
+        json.dump(stats, file, indent=4)
+
+def load_dictionary():
+    """Downloads a dictionary file if it doesn't exist, then loads it into memory."""
+    if not os.path.exists(DICT_FILE):
+        print(Fore.YELLOW + "\nDownloading English dictionary for the first time...")
+        print("This will take a few seconds but only happens once!")
+        try:
+            urllib.request.urlretrieve(DICT_URL, DICT_FILE)
+            print(Fore.GREEN + "Download complete!")
+        except Exception as e:
+            print(Fore.RED + f"Failed to download dictionary: {e}")
+            print("Please check your internet connection.")
+            return set()
+    
+    with open(DICT_FILE, "r") as f:
+        return set(word.strip().upper() for word in f)
+
+class WordleGame:
+    def __init__(self, mode="classic"):
+        self.mode = mode
+        if self.mode == "classic":
+            self.words = ["APPLE", "BEACH", "BRAIN", "CLOUD", "DANCE", "FLAME", "GHOST", "HEART", "LIGHT", "OCEAN"]
+            self.word_length = 5
+            self.attempts = 6
+        elif self.mode == "hard":
+            self.words = ["BANANA", "CASTLE", "DRAGON", "FOREST", "GUITAR", "JUNGLE", "KNIGHT", "PLANET", "ROCKET", "SILVER"]
+            self.word_length = 6
+            self.attempts = 5
+
+        self.secret_word = random.choice(self.words).upper()
+        self.guess_history = []
+        self.achievements_run = {"flawless": True}
+
+    def get_feedback(self, guess):
+        feedback = ""
+        for i in range(self.word_length):
+            if guess[i] == self.secret_word[i]:
+                feedback += Back.GREEN + Fore.BLACK + f" {guess[i]} " + Style.RESET_ALL
+            elif guess[i] in self.secret_word:
+                feedback += Back.YELLOW + Fore.BLACK + f" {guess[i]} " + Style.RESET_ALL
+                self.achievements_run["flawless"] = False
+            else:
+                feedback += Back.BLACK + Fore.WHITE + f" {guess[i]} " + Style.RESET_ALL
+                self.achievements_run["flawless"] = False
+        return feedback
+
+    def check_achievements(self, current_attempt):
+        unlocked = []
+        if current_attempt == 1:
+            unlocked.append("🎯 GENIUS: Guessed it on the first try!")
+        if current_attempt == self.attempts:
+            unlocked.append("😰 CLUTCH: Won on the very last breath!")
+        if self.achievements_run["flawless"]:
+            unlocked.append("✨ PURE LUCK: Every letter guessed was in the word!")
+        return unlocked
+
+    def play(self):
+        clear_screen()
+        print(f"\n{Fore.CYAN}--- PLAYING {self.mode.upper()} MODE ---{Style.RESET_ALL}")
+        print(f"Guess the {self.word_length}-letter word. You have {self.attempts} attempts.")
+        
+        stats = load_stats()
+        stats["games_played"] += 1
+
+        for turn in range(1, self.attempts + 1):
+            while True:
+                guess = input(f"\nAttempt {turn}/{self.attempts}: ").upper()
+
+                if len(guess) != self.word_length or not guess.isalpha():
+                    print(Fore.RED + f"Invalid input. Please enter exactly {self.word_length} letters.")
+                    continue 
+                break
+
+            feedback = self.get_feedback(guess)
+            self.guess_history.append(feedback)
+            
+            clear_screen()
+            print(f"\n{Fore.CYAN}--- PLAYING {self.mode.upper()} MODE ---{Style.RESET_ALL}")
+            for row in self.guess_history:
+                print(row)
+
+            if guess == self.secret_word:
+                print(f"\n{Fore.GREEN}SUCCESS! The word was {self.secret_word}.")
+                stats["wins"] += 1
+                
+                awards = self.check_achievements(turn)
+                if awards:
+                    print(f"\n{Fore.YELLOW}🏆 ACHIEVEMENTS UNLOCKED THIS RUN:")
+                    for a in awards:
+                        print(f" - {a}")
+                        if a not in stats["achievements"]:
+                            stats["achievements"].append(a)
+                
+                save_stats(stats)
+                return
+
+        print(f"\n{Fore.RED}GAME OVER. The word was {self.secret_word}.")
+        stats["losses"] += 1
+        save_stats(stats)
+
+def two_player_battle():
+    clear_screen()
+    print(f"\n{Fore.CYAN}--- TWO-PLAYER WORD BATTLE ---{Style.RESET_ALL}")
+    
+    # Ask for the number of rounds
+    while True:
+        try:
+            rounds = int(input("How many rounds would you like to play? (1-5): "))
+            if 1 <= rounds <= 5:
+                break
+            else:
+                print(Fore.RED + "Please choose a number between 1 and 5.")
+        except ValueError:
+            print(Fore.RED + "Invalid input. Please type a number.")
+
+    valid_words = load_dictionary()
+    if not valid_words:
+        return 
+
+    p1_score = 0
+    p2_score = 0
+
+    # The new Multi-Round Loop
+    for r in range(1, rounds + 1):
+        clear_screen()
+        print(f"\n{Fore.CYAN}--- ROUND {r}/{rounds} ---{Style.RESET_ALL}")
+        print(f"Score: Player 1 ({p1_score}) - Player 2 ({p2_score})")
+        
+        # Player 1's Turn
+        p1_word = ""
+        while True:
+            p1_word = input(f"\n{Fore.BLUE}Player 1{Style.RESET_ALL}, enter your longest word: ").upper()
+            if not p1_word.isalpha():
+                print(Fore.RED + "Letters only, please!")
+                continue
+            if p1_word not in valid_words:
+                print(Fore.RED + f"Nice try, but '{p1_word}' is not a real English word!")
+                continue
+            break
+            
+        clear_screen()
+        print(f"\n{Fore.CYAN}--- ROUND {r}/{rounds} ---{Style.RESET_ALL}")
+        print(f"Score: Player 1 ({p1_score}) - Player 2 ({p2_score})")
+        print(Fore.YELLOW + "\nPlayer 1's word is locked in!" + Style.RESET_ALL)
+        
+        # Player 2's Turn
+        p2_word = ""
+        while True:
+            p2_word = input(f"\n{Fore.MAGENTA}Player 2{Style.RESET_ALL}, enter your longest word: ").upper()
+            if not p2_word.isalpha():
+                print(Fore.RED + "Letters only, please!")
+                continue
+            if p2_word not in valid_words:
+                print(Fore.RED + f"Nice try, but '{p2_word}' is not a real English word!")
+                continue
+            break
+
+        # Round Results
+        clear_screen()
+        print(f"\n{Fore.CYAN}--- ROUND {r} RESULTS ---{Style.RESET_ALL}")
+        print(f"Player 1 played: {Fore.BLUE}{p1_word}{Style.RESET_ALL} ({len(p1_word)} letters)")
+        print(f"Player 2 played: {Fore.MAGENTA}{p2_word}{Style.RESET_ALL} ({len(p2_word)} letters)")
+        
+        if len(p1_word) > len(p2_word):
+            print(f"\n{Fore.GREEN}Player 1 wins Round {r}!{Style.RESET_ALL}")
+            p1_score += 1
+        elif len(p2_word) > len(p1_word):
+            print(f"\n{Fore.GREEN}Player 2 wins Round {r}!{Style.RESET_ALL}")
+            p2_score += 1
+        else:
+            print(f"\n{Fore.YELLOW}Round {r} is a TIE! No points awarded.{Style.RESET_ALL}")
+            
+        # Pause before the next round
+        if r < rounds:
+            input(f"\n{Fore.WHITE}Press Enter to start the next round...{Style.RESET_ALL}")
+
+    # Final Match Results
+    clear_screen()
+    print(f"\n{Fore.CYAN}=== FINAL BATTLE RESULTS ==={Style.RESET_ALL}")
+    print(f"Player 1 Final Score: {Fore.BLUE}{p1_score}{Style.RESET_ALL}")
+    print(f"Player 2 Final Score: {Fore.MAGENTA}{p2_score}{Style.RESET_ALL}")
+    
+    if p1_score > p2_score:
+        print(f"\n🏆 {Fore.GREEN}PLAYER 1 IS THE OVERALL WINNER!{Style.RESET_ALL}")
+    elif p2_score > p1_score:
+        print(f"\n🏆 {Fore.GREEN}PLAYER 2 IS THE OVERALL WINNER!{Style.RESET_ALL}")
+    else:
+        print(f"\n🤝 {Fore.YELLOW}THE MATCH ENDS IN A TIE!{Style.RESET_ALL}")
+
+def show_history():
+    clear_screen()
+    stats = load_stats()
+    print(f"\n{Fore.MAGENTA}=== PLAYER STATS ==={Style.RESET_ALL}")
+    print(f"Games Played: {stats['games_played']}")
+    print(f"Wins: {Fore.GREEN}{stats['wins']}{Style.RESET_ALL}")
+    print(f"Losses: {Fore.RED}{stats['losses']}{Style.RESET_ALL}")
+    
+    win_pct = (stats['wins'] / stats['games_played'] * 100) if stats['games_played'] > 0 else 0
+    print(f"Win Rate: {win_pct:.1f}%")
+
+    print(f"\n{Fore.YELLOW}=== TROPHY ROOM ==={Style.RESET_ALL}")
+    if not stats["achievements"]:
+        print("No achievements yet. Keep playing!")
+    else:
+        for a in stats["achievements"]:
+            print(a)
+    print("====================\n")
+
+def main_menu():
+    while True:
+        clear_screen()
+        print(f"\n{Fore.CYAN}=== MAIN MENU ==={Style.RESET_ALL}")
+        print("1. Play Classic Mode (5 Letters)")
+        print("2. Play Hard Mode (6 Letters)")
+        print("3. Two-Player Battle (Longest Word)")
+        print("4. View History & Achievements")
+        print("5. Quit")
+        
+        choice = input("Select an option (1-5): ")
+        
+        if choice == '1':
+            game = WordleGame(mode="classic")
+            game.play()
+            input(f"\n{Fore.WHITE}Press Enter to return to the main menu...{Style.RESET_ALL}")
+        elif choice == '2':
+            game = WordleGame(mode="hard")
+            game.play()
+            input(f"\n{Fore.WHITE}Press Enter to return to the main menu...{Style.RESET_ALL}")
+        elif choice == '3':
+            two_player_battle()
+            input(f"\n{Fore.WHITE}Press Enter to return to the main menu...{Style.RESET_ALL}")
+        elif choice == '4':
+            show_history()
+            input(f"\n{Fore.WHITE}Press Enter to return to the main menu...{Style.RESET_ALL}")
+        elif choice == '5':
+            clear_screen()
+            print("Thanks for playing!")
+            break
+        else:
+            print(Fore.RED + "Invalid choice. Please pick a number 1-5.")
+            input("\nPress Enter to try again...")
+
+if __name__ == "__main__":
+    main_menu()

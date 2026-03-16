@@ -1,0 +1,211 @@
+import random
+import os
+import sys
+
+# --- Configuration ---
+SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
+VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+
+# --- Helper Functions ---
+
+def clear_screen():
+    """Clears the console screen based on OS."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def create_deck():
+    """Creates a fresh 52-card deck."""
+    deck = []
+    for suit in SUITS:
+        for value in VALUES:
+            deck.append({'suit': suit, 'value': value})
+    random.shuffle(deck)
+    return deck
+
+def get_hand_value(hand):
+    """Calculates the numerical value of a hand, handling Aces."""
+    value = 0
+    aces = 0
+
+    for card in hand:
+        val = card['value']
+        if val in ['J', 'Q', 'K']:
+            value += 10
+        elif val == 'A':
+            value += 11
+            aces += 1
+        else:
+            value += int(val)
+
+    # Adjust for Aces if bust
+    while value > 21 and aces > 0:
+        value -= 10
+        aces -= 1
+        
+    return value
+
+def format_hand(hand, hide_first_card=False):
+    """Formats the hand for display."""
+    if hide_first_card:
+        visible = ", ".join([f"{c['value']} of {c['suit']}" for c in hand[1:]])
+        return f"[Hidden Card], {visible}"
+    return ", ".join([f"{c['value']} of {c['suit']}" for c in hand])
+
+# --- Core Gameplay Functions ---
+
+def play_round(chips):
+    """Runs a single round of Blackjack."""
+    
+    # 1. Betting Phase
+    while True:
+        try:
+            print(f"Current Chips: ${chips}")
+            bet_input = input("Enter your bet amount: ")
+            bet = int(bet_input)
+            if 0 < bet <= chips:
+                break
+            print("Invalid bet amount. You cannot bet more than you have or zero/negative.")
+        except ValueError:
+            print("Please enter a valid number.")
+
+    chips -= bet
+    deck = create_deck()
+    
+    # 2. Deal Initial Cards
+    player_hand = [deck.pop(), deck.pop()]
+    dealer_hand = [deck.pop(), deck.pop()]
+
+    player_val = get_hand_value(player_hand)
+    dealer_val = get_hand_value(dealer_hand)
+
+    print("\n--- The Deal ---")
+    print(f"Dealer shows: {format_hand(dealer_hand, hide_first_card=True)}")
+    print(f"Your hand:    {format_hand(player_hand)} (Value: {player_val})\n")
+
+    # 3. Check Natural Blackjack
+    if player_val == 21:
+        print(f"Dealer reveals: {format_hand(dealer_hand)} (Value: {dealer_val})")
+        if dealer_val == 21:
+            print("Both have Blackjack! Push.")
+            return chips + bet
+        else:
+            print("BLACKJACK! You win 3:2 payout.")
+            return chips + bet + int(bet * 1.5)
+
+    # 4. Player Turn
+    while True:
+        action = input("Action: (H)it or (S)tand? ").lower().strip()
+        
+        if action in ['h', 'hit']:
+            new_card = deck.pop()
+            player_hand.append(new_card)
+            player_val = get_hand_value(player_hand)
+            
+            print(f"\nYou drew: {new_card['value']} of {new_card['suit']}")
+            print(f"Your hand: {format_hand(player_hand)} (Value: {player_val})")
+            
+            if player_val > 21:
+                print("\nBUST! You went over 21.")
+                return chips # Player loses bet
+                
+        elif action in ['s', 'stand']:
+            break
+        else:
+            print("Invalid input. Please enter 'H' or 'S'.")
+
+    # 5. Dealer Turn
+    print("\n--- Dealer's Turn ---")
+    print(f"Dealer reveals: {format_hand(dealer_hand)}")
+    dealer_val = get_hand_value(dealer_hand)
+    print(f"Dealer Value: {dealer_val}")
+
+    while dealer_val < 17:
+        new_card = deck.pop()
+        dealer_hand.append(new_card)
+        dealer_val = get_hand_value(dealer_hand)
+        print(f"Dealer draws: {new_card['value']} of {new_card['suit']} -> New Value: {dealer_val}")
+
+    # 6. Determine Winner
+    print("\n--- Result ---")
+    if dealer_val > 21:
+        print("Dealer busts! You win.")
+        return chips + (bet * 2)
+    elif dealer_val > player_val:
+        print(f"Dealer wins ({dealer_val} vs {player_val}).")
+        return chips
+    elif player_val > dealer_val:
+        print(f"You win! ({player_val} vs {dealer_val}).")
+        return chips + (bet * 2)
+    else:
+        print(f"Push (Tie). Bet returned. ({player_val} vs {dealer_val})")
+        return chips + bet
+
+# --- Main Loop ---
+
+def start_game():
+    clear_screen()
+    print("=================================")
+    print("      PYTHON BLACKJACK           ")
+    print("=================================\n")
+    
+    player_chips = 100000
+    loans_taken = 0
+
+    while True:
+        # Check if player is broke and offer loan
+        if player_chips <= 0:
+            print("You are out of chips!")
+            
+            while True:
+                take_loan = input("Would you like to take a loan of $10,000? (Y/N): ").lower().strip()
+                if take_loan in ['y', 'yes']:
+                    player_chips += 10000
+                    loans_taken += 10000
+                    print(f"\nLoan approved! +$10,000 added.")
+                    print(f"Total Debt: ${loans_taken}")
+                    break
+                elif take_loan in ['n', 'no']:
+                    print(f"\nGame Over. You finished with ${loans_taken} in debt.")
+                    return
+                else:
+                    print("Invalid input. Please enter 'Y' or 'N'.")
+            
+        player_chips = play_round(player_chips)
+        
+        print(f"\nRemaining Chips: ${player_chips}")
+        if loans_taken > 0:
+            print(f"Current Debt: ${loans_taken}")
+
+            # --- Pay Off Debt Logic ---
+            if player_chips > 0:
+                while True:
+                    pay_choice = input("Would you like to pay off your debt? (Y/N): ").lower().strip()
+                    if pay_choice in ['y', 'yes']:
+                        if player_chips >= loans_taken:
+                            player_chips -= loans_taken
+                            loans_taken = 0
+                            print("Debt fully paid! You are debt-free.")
+                        else:
+                            print(f"You only have ${player_chips}, but owe ${loans_taken}.")
+                            partial = input("Pay all your chips towards the debt? (Y/N): ").lower().strip()
+                            if partial in ['y', 'yes']:
+                                loans_taken -= player_chips
+                                player_chips = 0
+                                print(f"You paid what you could. Remaining Debt: ${loans_taken}")
+                            else:
+                                print("Keeping your chips and continuing.")
+                        break
+                    elif pay_choice in ['n', 'no']:
+                        break
+                    else:
+                        print("Invalid input. Please enter 'Y' or 'N'.")
+        
+        # --- FIX: Strict Validation for Play Again ---
+        while True:
+            play_again = input("\nPlay again? (Y/N): ").lower().strip()
+            
+            if play_again in ['y', 'yes']:
+                break # Break inner loop, continue game
+            elif play_again in ['n', 'no']:
+                print(f"Thanks for playing! Final Chip Count: ${player_chips}")
+                if loans_taken > 0:
+                    print(f"Unpaid Debt: ${loans_taken}")

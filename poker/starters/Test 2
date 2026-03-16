@@ -1,0 +1,801 @@
+import random
+import os
+import time
+from collections import Counter
+
+# --- Configuration & Constants ---
+SUITS = ['♠', '♥', '♦', '♣']
+RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+VALUES = {r: i + 2 for i, r in enumerate(RANKS)} 
+BJ_VALUES = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
+    'J': 10, 'Q': 10, 'K': 10, 'A': 11
+}
+
+# --- Achievement Database (77 Entries Total) ---
+ACHIEVEMENTS_DB = {
+    # --- Progression (Games Played) ---
+    "newbie":       {"title": "Welcome To The Casino", "desc": "Play your first game."},
+    "regular":      {"title": "I Got A Feeling", "desc": "Play 10 games."},
+    "veteran":      {"title": "Can't Be Effective Be Persistant", "desc": "Play 50 games."},
+    "addict":       {"title": "Can't Stop", "desc": "Play 100 games."},
+    "lifetimer":    {"title": "Resident Evil", "desc": "Play 1,000 games. (Legendary)"}, # LEGENDARY 1
+
+    # --- Wealth (Money) ---
+    "broke":        {"title": "Rock Bottom", "desc": "Hit $0 balance."},
+    "flat_broke":   {"title": "Frequent Flyer", "desc": "Hit $0 balance 3 separate times. (Normal)"}, # NORMAL 1
+    "high_roller":  {"title": "High Roller", "desc": "Accumulate $2,500."},
+    "tycoon":       {"title": "Tycoon", "desc": "Accumulate $10,000."},
+    "whale":        {"title": "The Whale", "desc": "Accumulate $50,000."},
+    "millionaire":  {"title": "The 1 Percent", "desc": "Accumulate $1,000,000. (Legendary)"}, # LEGENDARY 2
+    "comeback":     {"title": "Lazarus", "desc": "Recover to $1000 after hitting $0."},
+    "dollar_dream": {"title": "A Dollar & A Dream", "desc": "Win a game while having exactly $1 left (before winnings). (Rare)"}, # RARE 1
+    "sequence":     {"title": "Orderly Chaos", "desc": "Have exactly $12,345 in your wallet. (Rare)"}, # RARE 2
+
+    # --- Debt (Loans) ---
+    "borrower":     {"title": "A Small Loan", "desc": "Take out your first loan."},
+    "frequent_borrower": {"title": "Regular Customer", "desc": "Visit the Loan Shark 5 times. (Normal)"}, # NORMAL 2
+    "debt_trap":    {"title": "In a Hole", "desc": "Owe the bank more than $2,000."},
+    "in_the_red":   {"title": "Deep Water", "desc": "Owe the bank more than $5,000. (Normal)"}, # NORMAL 3
+    "max_debt":     {"title": "Keep on Digging", "desc": "Owe the bank over $10,000."},
+    "living_edge":  {"title": "Living on the Edge", "desc": "Win a game while owing > $10,000. (Rare)"}, # RARE 3
+    "debt_free":    {"title": "You Always Come Back", "desc": "Pay off a debt completely."},
+    "responsible":  {"title": "Credit Score 800", "desc": "Repay a total of $5,000 in debts."},
+
+    # --- Betting ---
+    "penny_pincher": {"title": "Cowards Bet", "desc": "Bet exactly $1."},
+    "all_in":       {"title": "Lets Go Gambling", "desc": "Bet your entire wallet balance."},
+    "big_spender":  {"title": "Making it Rain", "desc": "Bet $1,000 or more in a single hand."},
+    "high_stakes_hero": {"title": "Titan of Industry", "desc": "Win a single bet of $10,000 or more. (Legendary)"}, # LEGENDARY 3
+
+    # --- Winning/Losing ---
+    "first_win":    {"title": "The First Of Many", "desc": "Win your first game."},
+    "winner_10":    {"title": "Heating Up", "desc": "Win 10 games total."},
+    "winner_25":    {"title": "Better Then Most", "desc": "Win 25 games total. (Normal)"}, # NORMAL 4
+    "winner_50":    {"title": "Champion", "desc": "Win 50 games total."},
+    "loser_10":     {"title": "The House Always Wins", "desc": "Lose 10 games total."},
+    "unlucky_25":   {"title": "Bad Omen", "desc": "Lose 25 games total. (Normal)"}, # NORMAL 5
+    "streak_3":     {"title": "Lucky Streak", "desc": "Win 3 games in a row."},
+    "streak_5":     {"title": "Bad Feeling About This", "desc": "Win 5 games in a row."},
+    "immortal":     {"title": "Unstoppable Force", "desc": "Win 20 games in a row. (Legendary)"}, # LEGENDARY 4
+    "cold_streak":  {"title": "Snake Eyes", "desc": "Lose 5 games in a row."},
+    "stalemate":    {"title": "Gridlock", "desc": "Get 3 Ties/Pushes in a row. (Rare)"}, # RARE 4
+
+    # --- Blackjack Specifics ---
+    "bj_native":    {"title": "Lucky Duck", "desc": "Get a Natural Blackjack (first two cards)."},
+    "god_mode":     {"title": "The Best Of Hermes", "desc": "Get 3 Natural Blackjacks in a row. (Mythical)"}, # Mythical 1
+    "bj_master":    {"title": "21 Master", "desc": "Get Blackjack 10 times."},
+    "bust_master":  {"title": "Bust-a-Move", "desc": "Bust (go over 21) 10 times."},
+    "close_call":   {"title": "RNG luck", "desc": "Win a hand with exactly 21 points."},
+    "solid_20":     {"title": "Solid Foundation", "desc": "Win a hand with exactly 20 points. (Normal)"}, # NORMAL 6
+    "low_ball":     {"title": "Underdog", "desc": "Win a Blackjack hand with a score less than 17."},
+    "charlie":      {"title": "Five Card Charlie", "desc": "Draw 5 cards in Blackjack without busting. (Rare)"}, # RARE 5
+    "push_it":      {"title": "Tough Luck", "desc": "Get a Push (Tie) 5 times."},
+    "hit_me":       {"title": "Luck Of the Gamble", "desc": "Hit 3 times in one hand and don't bust."},
+
+    # --- Poker Hands ---
+    "poker_pair":   {"title": "A Little Something", "desc": "Get One Pair."},
+    "poker_2pair":  {"title": "Double Trouble", "desc": "Get Two Pairs."},
+    "poker_trips":  {"title": "Three's Company", "desc": "Get Three of a Kind."},
+    "poker_straight": {"title": "Led The Shot", "desc": "Get a Straight."},
+    "poker_flush":  {"title": "Suited Up", "desc": "Get a Flush."},
+    "poker_full":   {"title": "Full House", "desc": "Get a Full House."},
+    "poker_quads":  {"title": "Four Horsemen", "desc": "Get Four of a Kind."},
+    "poker_sf":     {"title": "Legendary", "desc": "Get a Straight Flush."},
+    "poker_royal":  {"title": "The Might Of The British", "desc": "Get a Royal Flush (A-10 same suit)."},
+    "fold_master":  {"title": "Know When to Fold", "desc": "Lose a poker hand with High Card only."},
+    "bluffer":      {"title": "Stone Cold Bluffer", "desc": "Win a poker hand with only a High Card. (Rare)"}, # RARE 6
+    "poker_face":   {"title": "Poker Face", "desc": "Win 3 Poker games in a row. (Rare)"}, # RARE 7
+    
+    # --- Rare & Misc ---
+    "grinder":      {"title": "True Gambler", "desc": "Earn a total of $100,000 (cumulative)."},
+    "balanced":     {"title": "Perfectly Balanced", "desc": "End a game with exactly $1000 again."},
+    "devil":        {"title": "Number Of The Beast", "desc": "Have exactly $666 in your wallet."},
+    "lucky_7":      {"title": "Lucky 7", "desc": "Draw a 7 of Hearts in any game."},
+    "ace_hole":     {"title": "Ace In The Hole", "desc": "Hold 3 or more Aces in one hand."},
+    "suit_spade":   {"title": "Are You Sure?", "desc": "Hold 4 Spades in one hand."},
+    "suit_heart":   {"title": "Romeo", "desc": "Hold 4 Hearts in one hand."},
+    "sniper":       {"title": "Sniper", "desc": "Win against the Dealer by exactly 1 point."},
+    "overkill":     {"title": "Shoot For The Stars", "desc": "Beat the dealer by 10 or more points."},
+    "empty_hand":   {"title": "Game's Rigged", "desc": "Discard 5 cards in Poker."},
+    "stat_nerd":    {"title": "Analyst", "desc": "Check your statistics 5 times. (Normal)"}, # NORMAL 7
+    "jackpot_start":{"title": "Beginner's Luck", "desc": "Win the first 3 games you ever play. (Normal)"}, # NORMAL 8
+    "cautious":     {"title": "Sorry Misclick", "desc": "Win a Blackjack hand having stood on 14 or less. (Normal)"}, # NORMAL 9
+    "big_loss":     {"title": "Ouch", "desc": "Lose $1,000 or more in a single hand. (Normal)"}, # NORMAL 10
+}
+
+# --- Visual Utilities ---
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def print_header(title):
+    print("=" * 60)
+    print(f"{title.center(60)}")
+    print("=" * 60)
+
+# --- Class Definitions ---
+
+class Card:
+    def __init__(self, suit, rank):
+        self.suit = suit
+        self.rank = rank
+        self.value = VALUES[rank]
+
+    def __str__(self):
+        return f"{self.rank}{self.suit}"
+
+    def display_lines(self):
+        r = self.rank.ljust(2)
+        return [
+            "┌─────────┐",
+            f"│ {r}      │",
+            f"│    {self.suit}    │",
+            f"│      {r} │",
+            "└─────────┘"
+        ]
+
+class Deck:
+    def __init__(self):
+        self.cards = [Card(s, r) for s in SUITS for r in RANKS]
+        self.shuffle()
+
+    def shuffle(self):
+        random.shuffle(self.cards)
+
+    def deal(self):
+        if not self.cards:
+            return None
+        return self.cards.pop()
+
+class Player:
+    def __init__(self, name="Ewan", money=1000):
+        self.name = name
+        self.money = money
+        self.loan_debt = 0
+        self.hand = []
+        self.unlocked_achievements = set()
+        # --- STATS TRACKING ---
+        self.stats = {
+            'games_played': 0,
+            'wins': 0,
+            'losses': 0,
+            'pushes': 0,
+            'current_streak': 0, # Positive for wins, negative for losses
+            'max_win_streak': 0,
+            'max_loss_streak': 0,
+            'total_repaid': 0,
+            'cumulative_earnings': 0,
+            'blackjack_count': 0,
+            'bust_count': 0,
+            'hit_zero': False,
+            'zero_count': 0,          # NEW
+            'consecutive_bj': 0,      # NEW
+            'consecutive_push': 0,    # NEW
+            'consecutive_poker': 0,   # NEW
+            'stats_viewed': 0,        # NEW
+            'loan_visits': 0,         # NEW
+            'start_wins': 0           # NEW
+        }
+
+    def view_statistics(self):
+        self.stats['stats_viewed'] += 1
+        self.check_stats_achievements()
+        
+        clear_screen()
+        print_header("📊 PLAYER STATISTICS 📊")
+        
+        s = self.stats
+        total_games = s['games_played']
+        
+        # Safe calculation for win rate
+        if total_games > 0:
+            win_rate = (s['wins'] / total_games) * 100
+        else:
+            win_rate = 0.0
+        
+        print(f"👤 Player Name:      {self.name}")
+        print(f"💰 Current Balance:  ${self.money}")
+        print(f"🏦 Outstanding Debt: ${self.loan_debt}")
+        print("=" * 40)
+        print(f"🎲 Games Played:     {total_games}")
+        print(f"✅ Wins:             {s['wins']} ({win_rate:.1f}%)")
+        print(f"❌ Losses:           {s['losses']}")
+        print(f"🤝 Ties/Pushes:      {s['pushes']}")
+        print("-" * 40)
+        print(f"🔥 Current Streak:   {s['current_streak']}")
+        print(f"🚀 Best Win Streak:  {s['max_win_streak']}")
+        print(f"🥶 Worst Cold Streak:{s['max_loss_streak']}")
+        print("-" * 40)
+        print(f"💵 Lifetime Earnings: ${s['cumulative_earnings']}")
+        print(f"💸 Total Debt Paid:   ${s['total_repaid']}")
+        print(f"🃏 Blackjacks Hit:    {s['blackjack_count']}")
+        print(f"💥 Times Busted:      {s['bust_count']}")
+        print("=" * 40)
+        
+        input("\nPress Enter to return...")
+
+    def print_status(self):
+        print(f"💰 Wallet: ${self.money} | 🏦 Debt: ${self.loan_debt}")
+        print(f"🏆 Achievements: {len(self.unlocked_achievements)}/{len(ACHIEVEMENTS_DB)}")
+
+    def unlock_achievement(self, key):
+        if key in ACHIEVEMENTS_DB and key not in self.unlocked_achievements:
+            self.unlocked_achievements.add(key)
+            data = ACHIEVEMENTS_DB[key]
+            print("\n" + "★" * 50)
+            print(f"🏆 UNLOCKED: {data['title']} 🏆")
+            print(f"   {data['desc']}")
+            print("★" * 50 + "\n")
+            time.sleep(1.5)
+
+    def update_streak(self, result, game_type="generic"):
+        """ result: 1 (win), -1 (loss), 0 (tie) """
+        s = self.stats
+        
+        if result == 1:
+            # General Streak
+            if s['current_streak'] < 0: s['current_streak'] = 0
+            s['current_streak'] += 1
+            s['wins'] += 1
+            if s['current_streak'] > s['max_win_streak']:
+                s['max_win_streak'] = s['current_streak']
+            
+            # Type specific streaks
+            s['consecutive_push'] = 0
+            if game_type == 'poker':
+                s['consecutive_poker'] += 1
+            else:
+                s['consecutive_poker'] = 0
+
+            # Beginner Luck
+            if s['games_played'] < 3:
+                s['start_wins'] += 1
+                
+        elif result == -1:
+            if s['current_streak'] > 0: s['current_streak'] = 0
+            s['current_streak'] -= 1
+            s['losses'] += 1
+            
+            if s['current_streak'] < s['max_loss_streak']:
+                s['max_loss_streak'] = s['current_streak']
+            
+            # Reset specific
+            s['consecutive_bj'] = 0
+            s['consecutive_push'] = 0
+            s['consecutive_poker'] = 0
+            s['start_wins'] = 0
+                
+        else: # Tie
+            s['pushes'] += 1
+            s['consecutive_push'] += 1
+            # Reset win specific streaks on tie? Usually yes for "consecutive wins"
+            s['consecutive_bj'] = 0
+            s['consecutive_poker'] = 0
+
+    def check_stats_achievements(self):
+        """Run this after every game loop to check stat-based achievements."""
+        s = self.stats
+        
+        # Games Played
+        if s['games_played'] >= 1: self.unlock_achievement("newbie")
+        if s['games_played'] >= 10: self.unlock_achievement("regular")
+        if s['games_played'] >= 50: self.unlock_achievement("veteran")
+        if s['games_played'] >= 100: self.unlock_achievement("addict")
+        if s['games_played'] >= 1000: self.unlock_achievement("lifetimer") # LEGENDARY
+        
+        # Money
+        if self.money == 0: 
+            self.unlock_achievement("broke")
+            if not s['hit_zero']:
+                s['zero_count'] += 1
+                s['hit_zero'] = True
+        else:
+            s['hit_zero'] = False # Reset flag if they get money
+            
+        if s['zero_count'] >= 3: self.unlock_achievement("flat_broke") # NORMAL
+        if self.money >= 2500: self.unlock_achievement("high_roller")
+        if self.money >= 10000: self.unlock_achievement("tycoon")
+        if self.money >= 50000: self.unlock_achievement("whale")
+        if self.money >= 1000000: self.unlock_achievement("millionaire") # LEGENDARY
+        if self.money == 666: self.unlock_achievement("devil")
+        if self.money == 12345: self.unlock_achievement("sequence") # RARE
+        if self.money == 1000 and s['games_played'] > 5: self.unlock_achievement("balanced")
+        if s['zero_count'] > 0 and self.money >= 1000: self.unlock_achievement("comeback")
+        if s['cumulative_earnings'] >= 100000: self.unlock_achievement("grinder")
+
+        # Debt
+        if self.loan_debt > 2000: self.unlock_achievement("debt_trap")
+        if self.loan_debt > 5000: self.unlock_achievement("in_the_red") # NORMAL
+        if self.loan_debt > 10000: self.unlock_achievement("max_debt")
+        if s['total_repaid'] >= 5000: self.unlock_achievement("responsible")
+        if s['loan_visits'] >= 5: self.unlock_achievement("frequent_borrower") # NORMAL
+
+        # Wins/Losses
+        if s['wins'] >= 1: self.unlock_achievement("first_win")
+        if s['wins'] >= 10: self.unlock_achievement("winner_10")
+        if s['wins'] >= 25: self.unlock_achievement("winner_25") # NORMAL
+        if s['wins'] >= 50: self.unlock_achievement("winner_50")
+        if s['losses'] >= 10: self.unlock_achievement("loser_10")
+        if s['losses'] >= 25: self.unlock_achievement("unlucky_25") # NORMAL
+        if s['start_wins'] >= 3: self.unlock_achievement("jackpot_start") # NORMAL
+        
+        # Streaks
+        if s['current_streak'] >= 3: self.unlock_achievement("streak_3")
+        if s['current_streak'] >= 5: self.unlock_achievement("streak_5")
+        if s['current_streak'] >= 20: self.unlock_achievement("immortal") # LEGENDARY
+        if s['current_streak'] <= -5: self.unlock_achievement("cold_streak")
+        if s['consecutive_push'] >= 3: self.unlock_achievement("stalemate") # RARE
+        if s['consecutive_poker'] >= 3: self.unlock_achievement("poker_face") # RARE
+        if s['consecutive_bj'] >= 3: self.unlock_achievement("god_mode") # LEGENDARY
+        
+        # Blackjack Specific Counts
+        if s['blackjack_count'] >= 10: self.unlock_achievement("bj_master")
+        if s['bust_count'] >= 10: self.unlock_achievement("bust_master")
+        if s['pushes'] >= 5: self.unlock_achievement("push_it")
+        
+        # Meta
+        if s['stats_viewed'] >= 5: self.unlock_achievement("stat_nerd") # NORMAL
+
+    def take_loan(self, amount):
+        self.money += amount
+        self.loan_debt += amount
+        self.stats['loan_visits'] += 1
+        print(f"\n[BANK] You borrowed ${amount}.")
+        self.unlock_achievement("borrower")
+        self.check_stats_achievements()
+
+    def repay_loan(self, amount):
+        self.stats['loan_visits'] += 1
+        if amount > self.money:
+            print("[BANK] You don't have enough cash!")
+        elif amount > self.loan_debt:
+            actual_pay = self.loan_debt
+            self.money -= actual_pay
+            self.loan_debt = 0
+            self.stats['total_repaid'] += actual_pay
+            print(f"[BANK] Debt fully paid! Returned ${actual_pay}.")
+            self.unlock_achievement("debt_free")
+        else:
+            self.money -= amount
+            self.loan_debt -= amount
+            self.stats['total_repaid'] += amount
+            print(f"[BANK] Paid ${amount}. Remaining debt: ${self.loan_debt}")
+            if self.loan_debt == 0:
+                self.unlock_achievement("debt_free")
+        self.check_stats_achievements()
+
+def show_hands(player_hand, dealer_hand, hide_dealer_card=False):
+    # Prepare Dealer Hand
+    dealer_lines = [""] * 5
+    if hide_dealer_card:
+        card_back = [
+            "┌─────────┐", 
+            "│░░░░░░░░░│", 
+            "│░░░???░░░│", 
+            "│░░░░░░░░░│", 
+            "└─────────┘"
+        ]
+        visible_cards = [card_back] + [c.display_lines() for c in dealer_hand[1:]]
+    else:
+        visible_cards = [c.display_lines() for c in dealer_hand]
+
+    print("\n--- DEALER'S HAND ---")
+    for i in range(5):
+        line_str = " ".join([card[i] for card in visible_cards])
+        print(line_str)
+
+    # Prepare Player Hand
+    print(f"\n--- YOUR HAND ---")
+    player_card_lines = [c.display_lines() for c in player_hand]
+    for i in range(5):
+        line_str = " ".join([card[i] for card in player_card_lines])
+        print(line_str)
+    print("")
+
+# --- Game Logic: Blackjack ---
+
+def calculate_bj_score(hand):
+    score = 0
+    aces = 0
+    for card in hand:
+        score += BJ_VALUES[card.rank]
+        if card.rank == 'A':
+            aces += 1
+    
+    while score > 21 and aces:
+        score -= 10
+        aces -= 1
+    return score
+
+def check_hand_achievements(player, hand):
+    """Checks for achievements based on card contents."""
+    suits = [c.suit for c in hand]
+    ranks = [c.rank for c in hand]
+    
+    # Check for specific cards
+    for c in hand:
+        if c.rank == '7' and c.suit == '♥':
+            player.unlock_achievement("lucky_7")
+            
+    # Check counts
+    if ranks.count('A') >= 3: player.unlock_achievement("ace_hole")
+    if suits.count('♠') >= 4: player.unlock_achievement("suit_spade")
+    if suits.count('♥') >= 4: player.unlock_achievement("suit_heart")
+
+def play_blackjack(player):
+    deck = Deck()
+    clear_screen()
+    print_header("BLACKJACK")
+    
+    while True:
+        try:
+            player.print_status()
+            bet_input = input(f"Place your bet (Max ${player.money}): ")
+            if not bet_input.strip(): continue
+            bet = int(bet_input)
+            
+            if 0 < bet <= player.money:
+                break
+            print("Invalid bet amount.")
+        except ValueError:
+            print("Please enter a number.")
+
+    # Betting Achievements
+    if bet == 1: player.unlock_achievement("penny_pincher")
+    if bet == player.money: player.unlock_achievement("all_in")
+    if bet >= 1000: player.unlock_achievement("big_spender")
+
+    player_hand = [deck.deal(), deck.deal()]
+    dealer_hand = [deck.deal(), deck.deal()]
+    game_over = False
+    hit_count = 0
+    stood_value = 0 # To track for 'cautious' achievement
+
+    while not game_over:
+        clear_screen()
+        print_header("BLACKJACK TABLE")
+        show_hands(player_hand, dealer_hand, hide_dealer_card=True)
+        
+        p_score = calculate_bj_score(player_hand)
+        print(f"Your Score: {p_score}")
+        
+        # 5-Card Charlie Check
+        if len(player_hand) >= 5 and p_score <= 21:
+            player.unlock_achievement("charlie")
+
+        if p_score == 21:
+            print("Blackjack! 21!")
+            if len(player_hand) == 2:
+                player.unlock_achievement("bj_native")
+                player.stats['blackjack_count'] += 1
+                player.stats['consecutive_bj'] += 1 # Increment for God Mode
+            else:
+                player.stats['consecutive_bj'] = 0 # Reset if 21 but not natural
+            player.unlock_achievement("close_call")
+            break
+        elif p_score > 21:
+            print("Bust! You went over 21.")
+            player.money -= bet
+            player.stats['bust_count'] += 1
+            if bet >= 1000: player.unlock_achievement("big_loss")
+            player.update_streak(-1, 'bj')
+            player.stats['games_played'] += 1
+            player.check_stats_achievements()
+            input("\nPress Enter to continue...")
+            return
+
+        choice = input("(H)it or (S)tand? ").lower()
+        if choice == 'h':
+            player_hand.append(deck.deal())
+            hit_count += 1
+        elif choice == 's':
+            stood_value = p_score
+            break
+    
+    if hit_count >= 3 and calculate_bj_score(player_hand) <= 21:
+        player.unlock_achievement("hit_me")
+
+    # Dealer Turn
+    clear_screen()
+    print_header("BLACKJACK SHOWDOWN")
+    show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+    
+    p_score = calculate_bj_score(player_hand)
+    d_score = calculate_bj_score(dealer_hand)
+
+    while d_score < 17:
+        print("Dealer hits...")
+        time.sleep(1)
+        dealer_hand.append(deck.deal())
+        clear_screen()
+        print_header("BLACKJACK SHOWDOWN")
+        show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+        d_score = calculate_bj_score(dealer_hand)
+    
+    print(f"Your Score: {p_score} | Dealer Score: {d_score}")
+    
+    win = False
+    if d_score > 21:
+        print("Dealer Busted! You Win!")
+        win = True
+    elif d_score > p_score:
+        print("Dealer Wins.")
+        player.money -= bet
+        player.stats['consecutive_bj'] = 0
+        if bet >= 1000: player.unlock_achievement("big_loss")
+        player.update_streak(-1, 'bj')
+    elif d_score < p_score:
+        print("You Win!")
+        win = True
+    else:
+        print("Push (Tie). Money returned.")
+        player.update_streak(0, 'bj')
+
+    if win:
+        if player.money == bet: player.unlock_achievement("dollar_dream") # Won with only bet amount left
+        if player.loan_debt > 10000: player.unlock_achievement("living_edge")
+        
+        player.money += bet
+        player.stats['cumulative_earnings'] += bet
+        player.update_streak(1, 'bj')
+        
+        # Contextual Win achievements
+        if bet >= 10000: player.unlock_achievement("high_stakes_hero")
+        if p_score < 17: player.unlock_achievement("low_ball")
+        if p_score == 21: player.unlock_achievement("close_call")
+        if p_score == 20: player.unlock_achievement("solid_20")
+        if stood_value > 0 and stood_value <= 14: player.unlock_achievement("cautious")
+        if (p_score - d_score) == 1: player.unlock_achievement("sniper")
+        if (p_score - d_score) >= 10: player.unlock_achievement("overkill")
+    
+    if p_score != 21 or len(player_hand) > 2:
+        # If it wasn't a natural blackjack, reset the counter
+        player.stats['consecutive_bj'] = 0
+
+    # Check hand contents for rare cards
+    check_hand_achievements(player, player_hand)
+
+    player.stats['games_played'] += 1
+    player.check_stats_achievements()
+    input("\nPress Enter to return to menu...")
+
+# --- Game Logic: 5-Card Draw Poker ---
+
+def evaluate_poker_hand(hand):
+    """
+    Returns (score, description, tie_breaker_data)
+    Scores: 1=High, 2=Pair, 3=2Pair, 4=3Kind, 5=Str, 6=Flush, 7=FullH, 8=4Kind, 9=StrFlush
+    """
+    ranks = sorted([c.value for c in hand])
+    suits = [c.suit for c in hand]
+    count = Counter(ranks)
+    counts = sorted(count.items(), key=lambda x: (-x[1], -x[0]))
+    
+    is_flush = len(set(suits)) == 1
+    is_straight = (ranks[-1] - ranks[0] == 4) and (len(set(ranks)) == 5)
+    
+    # Ace low straight (A, 2, 3, 4, 5) -> ranks are 14, 2, 3, 4, 5
+    if not is_straight and set(ranks) == {14, 2, 3, 4, 5}:
+        is_straight = True
+        ranks = [1, 2, 3, 4, 5] # Treat Ace as 1
+
+    if is_straight and is_flush: 
+        if ranks[-1] == 14: return (10, "Royal Flush", ranks)
+        return (9, "Straight Flush", ranks)
+    if counts[0][1] == 4: return (8, "Four of a Kind", counts)
+    if counts[0][1] == 3 and counts[1][1] == 2: return (7, "Full House", counts)
+    if is_flush: return (6, "Flush", ranks)
+    if is_straight: return (5, "Straight", ranks)
+    if counts[0][1] == 3: return (4, "Three of a Kind", counts)
+    if counts[0][1] == 2 and counts[1][1] == 2: return (3, "Two Pair", counts)
+    if counts[0][1] == 2: return (2, "One Pair", counts)
+    return (1, "High Card", ranks)
+
+def play_poker(player):
+    deck = Deck()
+    clear_screen()
+    print_header("5-CARD DRAW POKER")
+
+    while True:
+        try:
+            player.print_status()
+            bet_input = input(f"Place your ante (Max ${player.money}): ")
+            if not bet_input.strip(): continue
+            bet = int(bet_input)
+            if 0 < bet <= player.money:
+                break
+            print("Invalid bet amount.")
+        except ValueError:
+            print("Please enter a number.")
+            
+    # Betting Achievements
+    if bet == 1: player.unlock_achievement("penny_pincher")
+    if bet == player.money: player.unlock_achievement("all_in")
+    if bet >= 1000: player.unlock_achievement("big_spender")
+
+    player_hand = [deck.deal() for _ in range(5)]
+    dealer_hand = [deck.deal() for _ in range(5)]
+
+    # Draw Phase
+    clear_screen()
+    print_header("POKER - DRAW PHASE")
+    show_hands(player_hand, [], hide_dealer_card=False)
+    
+    print("Which cards to discard? (e.g., '1 3 5'). Press Enter to keep all.")
+    choice = input("Indices (1-5): ")
+    
+    discard_count = 0
+    if choice.strip():
+        try:
+            indices = [int(i)-1 for i in choice.split()]
+            indices.sort(reverse=True)
+            for idx in indices:
+                if 0 <= idx < 5:
+                    player_hand.pop(idx)
+                    discard_count += 1
+            while len(player_hand) < 5:
+                player_hand.append(deck.deal())
+        except ValueError:
+            print("Invalid input, keeping hand.")
+            
+    if discard_count == 5:
+        player.unlock_achievement("empty_hand")
+
+    # Showdown
+    clear_screen()
+    print_header("POKER - SHOWDOWN")
+    show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+
+    p_score, p_desc, p_tie = evaluate_poker_hand(player_hand)
+    d_score, d_desc, d_tie = evaluate_poker_hand(dealer_hand)
+
+    print(f"You have: {p_desc}")
+    print(f"Dealer has: {d_desc}")
+    print("-" * 30)
+
+    # --- Poker Hand Achievements ---
+    if p_score == 2: player.unlock_achievement("poker_pair")
+    if p_score == 3: player.unlock_achievement("poker_2pair")
+    if p_score == 4: player.unlock_achievement("poker_trips")
+    if p_score == 5: player.unlock_achievement("poker_straight")
+    if p_score == 6: player.unlock_achievement("poker_flush")
+    if p_score == 7: player.unlock_achievement("poker_full")
+    if p_score == 8: player.unlock_achievement("poker_quads")
+    if p_score == 9: player.unlock_achievement("poker_sf")
+    if p_score == 10: player.unlock_achievement("poker_royal")
+
+    # Win/Loss Logic
+    win = False
+    if p_score > d_score:
+        print(f"You Win ${bet}!")
+        win = True
+    elif d_score > p_score:
+        print("Dealer Wins.")
+        player.money -= bet
+        if bet >= 1000: player.unlock_achievement("big_loss")
+        player.update_streak(-1, 'poker')
+        if p_score == 1: player.unlock_achievement("fold_master")
+    else:
+        # Tie breakers
+        if p_tie > d_tie:
+            print(f"You Win ${bet} (Kicker)!")
+            win = True
+        elif d_tie > p_tie:
+            print("Dealer Wins (Kicker).")
+            player.money -= bet
+            if bet >= 1000: player.unlock_achievement("big_loss")
+            player.update_streak(-1, 'poker')
+        else:
+            print("It's a complete tie.")
+            player.update_streak(0, 'poker')
+
+    if win:
+        if player.money == bet: player.unlock_achievement("dollar_dream")
+        if player.loan_debt > 10000: player.unlock_achievement("living_edge")
+        
+        player.money += bet
+        player.stats['cumulative_earnings'] += bet
+        player.update_streak(1, 'poker')
+        
+        if bet >= 10000: player.unlock_achievement("high_stakes_hero")
+        if p_score == 1: player.unlock_achievement("bluffer") # Won with high card only
+
+    # Check hand contents for rare cards
+    check_hand_achievements(player, player_hand)
+    
+    player.stats['games_played'] += 1
+    player.check_stats_achievements()
+    input("\nPress Enter to continue...")
+
+# --- Menus & System ---
+
+def show_rules():
+    clear_screen()
+    print_header("HOUSE RULES")
+    print("""
+    1. GENERAL
+       - This is a simulation using virtual currency.
+    
+    2. BLACKJACK
+       - Goal: Get 21. Dealer hits on soft 16.
+    
+    3. POKER (5-Card Draw)
+       - Standard ranking. Royal Flush is best.
+    """)
+    input("Press Enter to go back...")
+
+def view_achievements(player):
+    clear_screen()
+    print_header("🏆 ACHIEVEMENTS 🏆")
+    
+    # Sort achievements by unlocked status, then by title
+    all_keys = sorted(ACHIEVEMENTS_DB.keys(), key=lambda k: (k not in player.unlocked_achievements, k))
+    
+    print(f"Progress: {len(player.unlocked_achievements)} / {len(ACHIEVEMENTS_DB)}\n")
+    
+    for key in all_keys:
+        data = ACHIEVEMENTS_DB[key]
+        if key in player.unlocked_achievements:
+            print(f"✅ {data['title']:<20} | {data['desc']}")
+        else:
+            print(f"🔒 {'Locked':<20} | {data['desc']}")
+    
+    print("-" * 60)
+    input("Press Enter to return...")
+
+def loan_menu(player):
+    while True:
+        clear_screen()
+        print_header("THE LOAN SHARK")
+        player.print_status()
+        print("\n1. Borrow $500")
+        print("2. Borrow $1000")
+        print("3. Pay back $500")
+        print("4. Pay back ALL debt")
+        print("5. Exit Bank")
+        
+        choice = input("\nSelect Option: ")
+        
+        if choice == '1': player.take_loan(500)
+        elif choice == '2': player.take_loan(1000)
+        elif choice == '3': player.repay_loan(500)
+        elif choice == '4': player.repay_loan(player.loan_debt)
+        elif choice == '5': break
+        
+        time.sleep(1)
+
+def main():
+    player = Player()
+    
+    while True:
+        clear_screen()
+        print_header("PYTHON CASINO SIMULATOR")
+        player.print_status()
+        print("\n1. Play Blackjack")
+        print("2. Play Poker (5-Card Draw)")
+        print("3. Read Rules")
+        print("4. Visit Loan Shark")
+        print("5. View Achievements")
+        print("6. View Statistics")
+        print("7. Quit")
+        
+        choice = input("\nSelect Option: ")
+        
+        if choice == '1':
+            play_blackjack(player)
+        elif choice == '2':
+            play_poker(player)
+        elif choice == '3':
+            show_rules()
+        elif choice == '4':
+            loan_menu(player)
+        elif choice == '5':
+            view_achievements(player)
+        elif choice == '6':
+            player.view_statistics()
+        elif choice == '7':
+            print("Thanks for playing! Goodbye.")
+            break
+
+if __name__ == "__main__":
+    main()

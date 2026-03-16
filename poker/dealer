@@ -1,0 +1,385 @@
+import random
+import os
+import time
+from collections import Counter
+
+# --- Configuration & Constants ---
+SUITS = ['♠', '♥', '♦', '♣']
+RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+VALUES = {r: i + 2 for i, r in enumerate(RANKS)} # Numeric values for sorting
+BJ_VALUES = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
+    'J': 10, 'Q': 10, 'K': 10, 'A': 11
+}
+
+# --- Visual Utilities ---
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def print_header(title):
+    print("=" * 60)
+    print(f"{title.center(60)}")
+    print("=" * 60)
+
+# --- Class Definitions ---
+
+class Card:
+    def __init__(self, suit, rank):
+        self.suit = suit
+        self.rank = rank
+        self.value = VALUES[rank]
+
+    def __str__(self):
+        return f"{self.rank}{self.suit}"
+
+    def display_lines(self):
+        """Returns a list of strings representing the card in ASCII art."""
+        r = self.rank.ljust(2)
+        return [
+            "┌─────────┐",
+            f"│ {r}      │",
+            f"│    {self.suit}    │",
+            f"│      {r} │",
+            "└─────────┘"
+        ]
+
+class Deck:
+    def __init__(self):
+        self.cards = [Card(s, r) for s in SUITS for r in RANKS]
+        self.shuffle()
+
+    def shuffle(self):
+        random.shuffle(self.cards)
+
+    def deal(self):
+        if not self.cards:
+            return None
+        return self.cards.pop()
+
+class Player:
+    def __init__(self, name="Player", money=1000):
+        self.name = name
+        self.money = money
+        self.loan_debt = 0
+        self.hand = []
+
+    def print_status(self):
+        print(f"💰 Wallet: ${self.money} | 🏦 Debt: ${self.loan_debt}")
+
+    def take_loan(self, amount):
+        self.money += amount
+        self.loan_debt += amount
+        print(f"\n[BANK] You borrowed ${amount}.")
+
+    def repay_loan(self, amount):
+        if amount > self.money:
+            print("[BANK] You don't have enough cash!")
+        elif amount > self.loan_debt:
+            # Pay off exactly what is owed
+            actual_pay = self.loan_debt
+            self.money -= actual_pay
+            self.loan_debt = 0
+            print(f"[BANK] Debt fully paid! Returned ${actual_pay}.")
+        else:
+            self.money -= amount
+            self.loan_debt -= amount
+            print(f"[BANK] Paid ${amount}. Remaining debt: ${self.loan_debt}")
+
+def show_hands(player_hand, dealer_hand, hide_dealer_card=False):
+    """Prints hands side by side using ASCII art."""
+    
+    # Prepare Dealer Hand
+    dealer_lines = [""] * 5
+    if hide_dealer_card:
+        # First card hidden
+        card_back = [
+            "┌─────────┐", 
+            "│░░░░░░░░░│", 
+            "│░░░???░░░│", 
+            "│░░░░░░░░░│", 
+            "└─────────┘"
+        ]
+        visible_cards = [card_back] + [c.display_lines() for c in dealer_hand[1:]]
+    else:
+        visible_cards = [c.display_lines() for c in dealer_hand]
+
+    print("\n--- DEALER'S HAND ---")
+    for i in range(5):
+        line_str = " ".join([card[i] for card in visible_cards])
+        print(line_str)
+
+    # Prepare Player Hand
+    print(f"\n--- YOUR HAND ---")
+    player_card_lines = [c.display_lines() for c in player_hand]
+    for i in range(5):
+        line_str = " ".join([card[i] for card in player_card_lines])
+        print(line_str)
+    print("")
+
+# --- Game Logic: Blackjack ---
+
+def calculate_bj_score(hand):
+    score = 0
+    aces = 0
+    for card in hand:
+        score += BJ_VALUES[card.rank]
+        if card.rank == 'A':
+            aces += 1
+    
+    while score > 21 and aces:
+        score -= 10
+        aces -= 1
+    return score
+
+def play_blackjack(player):
+    deck = Deck()
+    clear_screen()
+    print_header("BLACKJACK")
+    
+    # Betting
+    while True:
+        try:
+            player.print_status()
+            bet = int(input(f"Place your bet (Max ${player.money}): "))
+            if 0 < bet <= player.money:
+                break
+            print("Invalid bet amount.")
+        except ValueError:
+            print("Please enter a number.")
+
+    player_hand = [deck.deal(), deck.deal()]
+    dealer_hand = [deck.deal(), deck.deal()]
+    game_over = False
+
+    while not game_over:
+        clear_screen()
+        print_header("BLACKJACK TABLE")
+        show_hands(player_hand, dealer_hand, hide_dealer_card=True)
+        
+        p_score = calculate_bj_score(player_hand)
+        print(f"Your Score: {p_score}")
+        
+        if p_score == 21:
+            print("Blackjack! 21!")
+            break
+        elif p_score > 21:
+            print("Bust! You went over 21.")
+            player.money -= bet
+            input("\nPress Enter to continue...")
+            return
+
+        choice = input("(H)it or (S)tand? ").lower()
+        if choice == 'h':
+            player_hand.append(deck.deal())
+        elif choice == 's':
+            break
+
+    # Dealer Turn
+    clear_screen()
+    print_header("BLACKJACK SHOWDOWN")
+    show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+    
+    p_score = calculate_bj_score(player_hand)
+    d_score = calculate_bj_score(dealer_hand)
+
+    while d_score < 17:
+        print("Dealer hits...")
+        time.sleep(1)
+        dealer_hand.append(deck.deal())
+        clear_screen()
+        print_header("BLACKJACK SHOWDOWN")
+        show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+        d_score = calculate_bj_score(dealer_hand)
+    
+    print(f"Your Score: {p_score} | Dealer Score: {d_score}")
+    
+    if d_score > 21:
+        print("Dealer Busted! You Win!")
+        player.money += bet
+    elif d_score > p_score:
+        print("Dealer Wins.")
+        player.money -= bet
+    elif d_score < p_score:
+        print("You Win!")
+        player.money += bet
+    else:
+        print("Push (Tie). Money returned.")
+
+    input("\nPress Enter to return to menu...")
+
+# --- Game Logic: 5-Card Draw Poker ---
+
+def evaluate_poker_hand(hand):
+    """Returns a tuple: (score_rank, description, tie_breakers)"""
+    ranks = sorted([c.value for c in hand])
+    suits = [c.suit for c in hand]
+    count = Counter(ranks)
+    counts = sorted(count.items(), key=lambda x: (-x[1], -x[0])) # Sort by frequency then rank
+    
+    is_flush = len(set(suits)) == 1
+    is_straight = (ranks[-1] - ranks[0] == 4) and (len(set(ranks)) == 5)
+    # Special Ace low straight (A, 2, 3, 4, 5)
+    if not is_straight and set(ranks) == {14, 2, 3, 4, 5}:
+        is_straight = True
+        ranks = [1, 2, 3, 4, 5] # Adjust for tie breaking
+
+    if is_straight and is_flush: return (9, "Straight Flush", ranks)
+    if counts[0][1] == 4: return (8, "Four of a Kind", counts)
+    if counts[0][1] == 3 and counts[1][1] == 2: return (7, "Full House", counts)
+    if is_flush: return (6, "Flush", ranks)
+    if is_straight: return (5, "Straight", ranks)
+    if counts[0][1] == 3: return (4, "Three of a Kind", counts)
+    if counts[0][1] == 2 and counts[1][1] == 2: return (3, "Two Pair", counts)
+    if counts[0][1] == 2: return (2, "One Pair", counts)
+    return (1, "High Card", ranks)
+
+def play_poker(player):
+    deck = Deck()
+    clear_screen()
+    print_header("5-CARD DRAW POKER")
+
+    # Betting
+    while True:
+        try:
+            player.print_status()
+            bet = int(input(f"Place your ante (Max ${player.money}): "))
+            if 0 < bet <= player.money:
+                break
+            print("Invalid bet amount.")
+        except ValueError:
+            print("Please enter a number.")
+
+    # Deal
+    player_hand = [deck.deal() for _ in range(5)]
+    # In this simplified version, you play against a paytable, or a Dealer with random AI
+    # Let's do Dealer vs Player for excitement
+    dealer_hand = [deck.deal() for _ in range(5)]
+
+    # Draw Phase
+    clear_screen()
+    print_header("POKER - DRAW PHASE")
+    show_hands(player_hand, [], hide_dealer_card=False) # Don't show dealer yet
+    
+    print("Which cards to discard? (e.g., '1 3 5' to drop 1st, 3rd, 5th card).")
+    print("Press Enter to keep all.")
+    choice = input("Indices (1-5): ")
+    
+    if choice.strip():
+        try:
+            indices = [int(i)-1 for i in choice.split()]
+            # Sort descending to remove correctly
+            indices.sort(reverse=True)
+            for idx in indices:
+                if 0 <= idx < 5:
+                    player_hand.pop(idx)
+            
+            # Refill hand
+            while len(player_hand) < 5:
+                player_hand.append(deck.deal())
+        except ValueError:
+            print("Invalid input, keeping hand.")
+
+    # Showdown
+    clear_screen()
+    print_header("POKER - SHOWDOWN")
+    show_hands(player_hand, dealer_hand, hide_dealer_card=False)
+
+    p_score, p_desc, p_tie = evaluate_poker_hand(player_hand)
+    d_score, d_desc, d_tie = evaluate_poker_hand(dealer_hand)
+
+    print(f"You have: {p_desc}")
+    print(f"Dealer has: {d_desc}")
+    print("-" * 30)
+
+    if p_score > d_score:
+        print(f"You Win ${bet}!")
+        player.money += bet
+    elif d_score > p_score:
+        print("Dealer Wins.")
+        player.money -= bet
+    else:
+        # Tie breaker simplified
+        if p_tie > d_tie:
+            print(f"You Win ${bet} (Kicker)!")
+            player.money += bet
+        elif d_tie > p_tie:
+            print("Dealer Wins (Kicker).")
+            player.money -= bet
+        else:
+            print("It's a complete tie.")
+
+    input("\nPress Enter to continue...")
+
+# --- Menus & System ---
+
+def show_rules():
+    clear_screen()
+    print_header("HOUSE RULES")
+    print("""
+    1. GENERAL
+       - This is a simulation using virtual currency.
+       - If you run out of money, visit the Loan Shark.
+
+    2. BLACKJACK
+       - Goal: Get closer to 21 than the dealer without going over.
+       - Aces are 1 or 11. Face cards are 10.
+       - Dealer must Hit on 16 and Stand on 17.
+       - Blackjack pays 1:1 in this simulation.
+
+    3. POKER (5-Card Draw)
+       - Ante up to play against the Dealer.
+       - You get 5 cards. You may discard any number of them once.
+       - Best hand ranking wins (High Card -> One Pair -> ... -> Straight Flush).
+    """)
+    input("Press Enter to go back...")
+
+def loan_menu(player):
+    while True:
+        clear_screen()
+        print_header("THE LOAN SHARK")
+        player.print_status()
+        print("\n1. Borrow $500")
+        print("2. Borrow $1000")
+        print("3. Pay back $500")
+        print("4. Pay back ALL debt")
+        print("5. Exit Bank")
+        
+        choice = input("\nSelect Option: ")
+        
+        if choice == '1': player.take_loan(500)
+        elif choice == '2': player.take_loan(1000)
+        elif choice == '3': player.repay_loan(500)
+        elif choice == '4': player.repay_loan(player.loan_debt)
+        elif choice == '5': break
+        
+        time.sleep(1)
+
+def main():
+    player = Player()
+    
+    while True:
+        clear_screen()
+        print_header("PYTHON CASINO SIMULATOR")
+        player.print_status()
+        print("\n1. Play Blackjack")
+        print("2. Play Poker (5-Card Draw)")
+        print("3. Read Rules")
+        print("4. Visit Loan Shark")
+        print("5. Quit")
+        
+        choice = input("\nSelect Option: ")
+        
+        if choice == '1':
+            play_blackjack(player)
+        elif choice == '2':
+            play_poker(player)
+        elif choice == '3':
+            show_rules()
+        elif choice == '4':
+            loan_menu(player)
+        elif choice == '5':
+            print("Thanks for playing! Goodbye.")
+            break
+
+if __name__ == "__main__":
+    main()

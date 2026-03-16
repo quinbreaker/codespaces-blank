@@ -1,0 +1,171 @@
+import random
+import json
+import os
+from colorama import Fore, Back, Style, init
+
+# Initialize colorama
+init(autoreset=True)
+
+STATS_FILE = "wordle_stats.json"
+
+def clear_screen():
+    """Clears the terminal screen across different operating systems."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def load_stats():
+    """Loads stats from a JSON file, or creates default stats if none exist."""
+    if os.path.exists(STATS_FILE):
+        with open(STATS_FILE, "r") as file:
+            return json.load(file)
+    return {"games_played": 0, "wins": 0, "losses": 0, "achievements": []}
+
+def save_stats(stats):
+    """Saves the current stats to a JSON file."""
+    with open(STATS_FILE, "w") as file:
+        json.dump(stats, file, indent=4)
+
+class WordleGame:
+    def __init__(self, mode="classic"):
+        self.mode = mode
+        # Set up rules based on game mode
+        if self.mode == "classic":
+            self.words = ["APPLE", "BEACH", "BRAIN", "CLOUD", "DANCE", "FLAME", "GHOST", "HEART", "LIGHT", "OCEAN"]
+            self.word_length = 5
+            self.attempts = 6
+        elif self.mode == "hard":
+            self.words = ["BANANA", "CASTLE", "DRAGON", "FOREST", "GUITAR", "JUNGLE", "KNIGHT", "PLANET", "ROCKET", "SILVER"]
+            self.word_length = 6
+            self.attempts = 5
+
+        self.secret_word = random.choice(self.words).upper()
+        self.guess_history = []
+        self.achievements_run = {
+            "flawless": True
+        }
+
+    def get_feedback(self, guess):
+        feedback = ""
+        for i in range(self.word_length):
+            if guess[i] == self.secret_word[i]:
+                feedback += Back.GREEN + Fore.BLACK + f" {guess[i]} " + Style.RESET_ALL
+            elif guess[i] in self.secret_word:
+                feedback += Back.YELLOW + Fore.BLACK + f" {guess[i]} " + Style.RESET_ALL
+                self.achievements_run["flawless"] = False
+            else:
+                feedback += Back.BLACK + Fore.WHITE + f" {guess[i]} " + Style.RESET_ALL
+                self.achievements_run["flawless"] = False
+        return feedback
+
+    def check_achievements(self, current_attempt):
+        unlocked = []
+        if current_attempt == 1:
+            unlocked.append("🎯 GENIUS: Guessed it on the first try!")
+        if current_attempt == self.attempts:
+            unlocked.append("😰 CLUTCH: Won on the very last breath!")
+        if self.achievements_run["flawless"]:
+            unlocked.append("✨ PURE LUCK: Every letter guessed was in the word!")
+        return unlocked
+
+    def play(self):
+        clear_screen()
+        print(f"\n{Fore.CYAN}--- PLAYING {self.mode.upper()} MODE ---{Style.RESET_ALL}")
+        print(f"Guess the {self.word_length}-letter word. You have {self.attempts} attempts.")
+        
+        stats = load_stats()
+        stats["games_played"] += 1
+
+        for turn in range(1, self.attempts + 1):
+            
+            # This inner loop keeps asking until a valid guess is provided
+            while True:
+                guess = input(f"\nAttempt {turn}/{self.attempts}: ").upper()
+
+                if len(guess) != self.word_length or not guess.isalpha():
+                    print(Fore.RED + f"Invalid input. Please enter exactly {self.word_length} letters.")
+                    # Continues the INNER loop, asking for the same attempt again
+                    continue 
+                
+                # If we get here, the guess is valid. Break out of the inner loop.
+                break
+
+            feedback = self.get_feedback(guess)
+            self.guess_history.append(feedback)
+            
+            # Print the board
+            clear_screen()
+            print(f"\n{Fore.CYAN}--- PLAYING {self.mode.upper()} MODE ---{Style.RESET_ALL}")
+            for row in self.guess_history:
+                print(row)
+
+            if guess == self.secret_word:
+                print(f"\n{Fore.GREEN}SUCCESS! The word was {self.secret_word}.")
+                stats["wins"] += 1
+                
+                # Check and save achievements
+                awards = self.check_achievements(turn)
+                if awards:
+                    print(f"\n{Fore.YELLOW}🏆 ACHIEVEMENTS UNLOCKED THIS RUN:")
+                    for a in awards:
+                        print(f" - {a}")
+                        if a not in stats["achievements"]:
+                            stats["achievements"].append(a)
+                
+                save_stats(stats)
+                return
+
+        print(f"\n{Fore.RED}GAME OVER. The word was {self.secret_word}.")
+        stats["losses"] += 1
+        save_stats(stats)
+
+def show_history():
+    clear_screen()
+    stats = load_stats()
+    print(f"\n{Fore.MAGENTA}=== PLAYER STATS ==={Style.RESET_ALL}")
+    print(f"Games Played: {stats['games_played']}")
+    print(f"Wins: {Fore.GREEN}{stats['wins']}{Style.RESET_ALL}")
+    print(f"Losses: {Fore.RED}{stats['losses']}{Style.RESET_ALL}")
+    
+    # Calculate win percentage safely
+    win_pct = (stats['wins'] / stats['games_played'] * 100) if stats['games_played'] > 0 else 0
+    print(f"Win Rate: {win_pct:.1f}%")
+
+    print(f"\n{Fore.YELLOW}=== TROPHY ROOM ==={Style.RESET_ALL}")
+    if not stats["achievements"]:
+        print("No achievements yet. Keep playing!")
+    else:
+        for a in stats["achievements"]:
+            print(a)
+    print("====================\n")
+
+def main_menu():
+    while True:
+        clear_screen()
+        print(f"\n{Fore.CYAN}=== MAIN MENU ==={Style.RESET_ALL}")
+        print("1. Play Classic Mode (5 Letters)")
+        print("2. Play Hard Mode (6 Letters)")
+        print("3. View History & Achievements")
+        print("4. Quit")
+        
+        choice = input("Select an option (1-4): ")
+        
+        if choice == '1':
+            game = WordleGame(mode="classic")
+            game.play()
+            input(f"\n{Fore.WHITE}Press Enter to return to the main menu...{Style.RESET_ALL}")
+        elif choice == '2':
+            game = WordleGame(mode="hard")
+            game.play()
+            input(f"\n{Fore.WHITE}Press Enter to return to the main menu...{Style.RESET_ALL}")
+        elif choice == '3':
+            show_history()
+            input(f"\n{Fore.WHITE}Press Enter to return to the main menu...{Style.RESET_ALL}")
+        elif choice == '4':
+            clear_screen()
+            print("Thanks for playing!")
+            break
+        else:
+            print(Fore.RED + "Invalid choice. Please pick 1, 2, 3, or 4.")
+            input("\nPress Enter to try again...")
+
+if __name__ == "__main__":
+    main_menu()
