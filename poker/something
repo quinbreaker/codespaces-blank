@@ -1,0 +1,54 @@
+const userInput = "Rock";
+const playGame = () => {
+  const userChoice = getUserChoice(userInput);
+  console.log(userChoice);
+  const computerChoice = getComputerChoice();
+  console.log(computerChoice);
+  const determineWinner = (userInput, computerInput) => {
+    // You can add logic here to determine the winner
+    return;
+  };
+  console.log(determineWinner(userChoice, computerChoice));
+};
+playGame();
+var computerChoice = getComputerChoice();
+console.log(computerChoice);
+const getUserChoice = userInput => {
+  // lowercase
+  userInput = userInput.toLowerCase();
+  if (userInput === 'rock' || userInput === 'paper') {
+    return userInput;
+  } else if (userInput === 'scissors') {
+    return userInput;
+  } else {
+    return 'Input Error!';
+  }
+};
+
+// Example usage:
+console.log(getUserChoice('Rock'));
+console.log(getUserChoice('paper'));
+console.log(getUserChoice('Scissors'));
+getUserChoice('bomb')
+const getComputerChoice = () => {
+  const randomNumber = Math.floor(Math.random() * 3);
+  if (randomNumber === 0) return 'rock';
+  if (randomNumber === 1) return 'paper';
+  return 'scissors';
+};
+
+// Example of correct if statement usage:
+let userChoice = getUserChoice('rock');
+let computerChoice;
+
+if (userChoice === 'rock') {
+  computerChoice = 'scissors';
+} else if (userChoice === 'paper') {
+  computerChoice = 'rock';
+} else if (userChoice === 'scissors') {
+  computerChoice = 'rock';
+} else {
+  console.log('Invalid answer');
+}
+
+playGame();

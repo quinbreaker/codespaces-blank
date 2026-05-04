@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML5 3D Voxel Fighter</title>
+    <style>
+        body { margin: 0; background-color: #050510; color: white; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden;}
+        
+        /* --- MENU --- */
+        #main-menu { background: #1a1a2e; border: 4px solid #4a4e69; border-radius: 10px; padding: 20px 30px; width: 700px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); text-align: center; max-height: 90vh; overflow-y: auto;}
+        h1 { margin-top: 0; color: #00ffff; text-shadow: 2px 2px 0 #e74c3c; font-size: 36px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;}
+        .menu-section { background: #22223b; margin: 10px 0; padding: 15px; border-radius: 8px; border: 1px solid #4a4e69; display: flex; justify-content: space-around; text-align: left;}
+        .menu-col { display: flex; flex-direction: column; gap: 8px; width: 45%; }
+        label { font-weight: bold; font-size: 13px; color: #9bf6ff; }
+        select, .mode-btn { background: #0a0a1a; color: white; border: 1px solid #4a4e69; padding: 8px; border-radius: 4px; outline: none; font-size: 13px; }
+        .mode-btn { cursor: pointer; flex: 1; margin: 0 5px; transition: 0.2s; }
+        .mode-btn.active { background: #00ffff; color: #000; font-weight: bold; border-color: #00ffff; }
+        #start-btn { background: #e74c3c; color: #fff; font-size: 22px; font-weight: bold; padding: 12px 40px; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; box-shadow: 0 5px 0 #c0392b; width: 100%; text-transform: uppercase;}
+        #start-btn:active { transform: translateY(5px); box-shadow: none; }
+        #cpu-settings { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #4a4e69;}
+
+        /* --- ACHIEVEMENTS PANEL --- */
+        #achievements-panel { background: #111; padding: 10px; border-radius: 5px; margin-top: 15px; border: 1px solid #f1c40f; text-align: left;}
+        #achievements-panel h3 { margin: 0 0 10px 0; color: #f1c40f; font-size: 16px; text-align: center;}
+        .ach-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .ach-item { font-size: 11px; padding: 5px; background: #222; border-left: 3px solid #555; display: flex; align-items: center; justify-content: space-between;}
+        .ach-item.unlocked { border-color: #f1c40f; background: #2a2a10; color: #fff;}
+        .ach-icon { font-size: 16px; margin-right: 5px; }
+
+        /* --- GAME UI --- */
+        #game-container { display: none; flex-direction: column; align-items: center; }
+        #ui-container { position: relative; width: 800px; margin-top: 10px; }
+        canvas { border: 4px solid #4a4e69; box-shadow: 0 0 30px rgba(0,255,255,0.2); background: #111; border-radius: 5px; }
+        
+        .health-bar-container { position: absolute; top: 15px; width: 280px; height: 25px; background: #333; border: 2px solid #fff; box-shadow: 3px 3px 0px rgba(0,0,0,0.5); z-index: 10; }
+        #p1-health-container { left: 15px; }
+        #p2-health-container { right: 15px; }
+        .health-bar { height: 100%; background: linear-gradient(to bottom, #00ffff, #008888); transition: width 0.1s; }
+        .block-bar { height: 4px; background: #f1c40f; margin-top: 2px; width: 100%; }
+
+        #scoreboard { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; background: rgba(0,0,0,0.8); padding: 5px 20px; border-radius: 8px; border: 2px solid #00ffff; z-index: 10;}
+        .round-dots { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; margin: 0 3px; background: #333;}
+        .dot-won { background: #e74c3c; border-color: #ff7675;}
+
+        .controls { width: 800px; display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; background: #222; padding: 10px; box-sizing: border-box; border-radius: 5px; border-bottom: 3px solid #444;}
+        .buff-text { font-size: 12px; color: #f1c40f; font-weight: bold; margin-top: 5px; height: 15px;}
+        
+        #combo-display { position: absolute; top: 80px; left: 50%; transform: translateX(-50%); font-size: 32px; font-weight: bold; color: #f1c40f; text-shadow: 2px 2px 0 #000; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 20;}
+        
+        /* --- TOAST NOTIFICATIONS --- */
+        #toast-container { position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 50; pointer-events: none;}
+        .toast { background: rgba(0,0,0,0.85); border: 2px solid #f1c40f; border-radius: 5px; padding: 10px 15px; color: white; display: flex; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); animation: slideIn 0.3s forwards; }
+        .toast-icon { font-size: 24px; margin-right: 10px; }
+        .toast-content strong { color: #f1c40f; display: block; font-size: 14px;}
+        .toast-content span { font-size: 12px; color: #ccc;}
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0;} to { transform: translateX(0); opacity: 1;} }
+    </style>
+</head>
+<body>
+
+    <div id="main-menu">
+        <h1>Neon Rumble 3D</h1>
+        <p style="color: #ccc; margin-top: -10px;">Volumetric Combat Arena</p>
+        
+        <div style="display: flex; justify-content: center; margin-bottom: 10px;">
+            <button class="mode-btn active" id="btn-pvp" onclick="setMode('pvp')">PVP</button>
+            <button class="mode-btn" id="btn-pve" onclick="setMode('pve')">Vs CPU</button>
+        </div>
+
+        <div class="menu-section">
+            <div class="menu-col">
+                <label>PLAYER 1</label>
+                <select id="p1-class">
+                    <option value="ninja">Ninja (Fast, Shurikens)</option>
+                    <option value="tank">Tank (Slow, AoE Slam)</option>
+                    <option value="brawler">Brawler (Balanced, Rage)</option>
+                    <option value="mage">Mage (Fragile, Magic Spread)</option>
+                    <option value="assassin">Assassin (Very Fast, Blink)</option>
+                    <option value="cyborg">Cyborg (Tough, Missile)</option>
+                    <option value="paladin">Paladin (Heals over time, Shield)</option>
+                    <option value="berserker">Berserker (Glass Cannon, Leap)</option>
+                    <option value="sniper">Sniper (Slow, Piercing Shot)</option>
+                    <option value="monk">Monk (Fast, Damage Reflect)</option>
+                </select>
+                <select id="p1-weapon">
+                    <option value="0">Fists (Range: Short | Dmg: Low)</option>
+                    <option value="1">Sword (Range: Med | Dmg: High)</option>
+                    <option value="2">Dagger (Range: V.Short | Dmg: Med)</option>
+                    <option value="3">Spear (Range: Long | Dmg: Med)</option>
+                    <option value="4">Hammer (Range: Med | Dmg: V.High)</option>
+                    <option value="5">Whip (Range: V.Long | Dmg: Low)</option>
+                </select>
+            </div>
+            
+            <div class="menu-col">
+                <label id="p2-label">PLAYER 2</label>
+                <select id="p2-class">
+                    <option value="tank">Tank (Slow, AoE Slam)</option>
+                    <option value="ninja">Ninja (Fast, Shurikens)</option>
+                    <option value="brawler">Brawler (Balanced, Rage)</option>
+                    <option value="mage">Mage (Fragile, Magic Spread)</option>
+                    <option value="assassin">Assassin (Very Fast, Blink)</option>
+                    <option value="cyborg">Cyborg (Tough, Missile)</option>
+                    <option value="paladin">Paladin (Heals over time, Shield)</option>
+                    <option value="berserker">Berserker (Glass Cannon, Leap)</option>
+                    <option value="sniper">Sniper (Slow, Piercing Shot)</option>
+                    <option value="monk">Monk (Fast, Damage Reflect)</option>
+                </select>
+                <select id="p2-weapon">
+                    <option value="1">Sword (Range: Med | Dmg: High)</option>
+                    <option value="0">Fists (Range: Short | Dmg: Low)</option>
+                    <option value="2">Dagger (Range: V.Short | Dmg: Med)</option>
+                    <option value="3">Spear (Range: Long | Dmg: Med)</option>
+                    <option value="4">Hammer (Range: Med | Dmg: V.High)</option>
+                    <option value="5">Whip (Range: V.Long | Dmg: Low)</option>
+                </select>
+                
+                <div id="cpu-settings">
+                    <label>CPU Difficulty</label>
+                    <select id="cpu-difficulty">
+                        <option value="easy">Easy</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="hard">Hard</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <button id="start-btn" onclick="startGame()">ENTER ARENA</button>
+
+        <div id="achievements-panel">
+            <h3>TROPHY ROOM</h3>
+            <div class="ach-grid" id="ach-list-ui"></div>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <div class="controls">
+            <div>
+                <strong>Player 1</strong> | Move: WASD | Jump: Space | Atk: F | Spc: G | Block: H<br>
+                <div id="p1-buffs" class="buff-text"></div>
+            </div>
+            <div><button style="background:#e74c3c; color:white; border:none; padding:5px; border-radius:3px; cursor:pointer;" onclick="returnToMenu()">Quit</button></div>
+            <div style="text-align: right;">
+                <strong id="ingame-p2-label">Player 2</strong> | Move: Arrows | Jump: Enter | Atk: . | Spc: / | Block: Shift<br>
+                <div id="p2-buffs" class="buff-text"></div>
+            </div>
+        </div>
+
+        <div id="ui-container">
+            <div id="scoreboard">
+                <div style="font-size: 10px; font-weight: bold; margin-bottom: 2px;">ROUNDS</div>
+                <div>
+                    <span class="round-dots" id="p1-win-1"></span><span class="round-dots" id="p1-win-2"></span>
+                    <span style="margin: 0 10px; color:#00ffff;">VS</span>
+                    <span class="round-dots" id="p2-win-1"></span><span class="round-dots" id="p2-win-2"></span>
+                </div>
+            </div>
+            <div id="combo-display">2 HITS!</div>
+
+            <div id="p1-health-container" class="health-bar-container">
+                <div id="p1-health" class="health-bar"></div>
+                <div id="p1-block" class="block-bar"></div>
+            </div>
+            <div id="p2-health-container" class="health-bar-container">
+                <div id="p2-health" class="health-bar" style="float: right;"></div>
+                <div id="p2-block" class="block-bar" style="float: right;"></div>
+            </div>
+            
+            <canvas id="gameCanvas" width="800" height="450"></canvas>
+            <div id="toast-container"></div>
+        </div>
+    </div>
+
+<script>
+    // --- ACHIEVEMENTS SYSTEM ---
+    const allAchievements = [
+        { id: 'first_blood', icon: '🩸', title: "First Blood", desc: "Land the first attack in a round." },
+        { id: 'combo_initiate', icon: '⚡', title: "Combo Initiate", desc: "String together 3 hits." },
+        { id: 'combo_master', icon: '🔥', title: "Combo Master", desc: "String together 6 hits!" },
+        { id: 'flawless', icon: '🛡️', title: "Flawless Round", desc: "Win a round without taking damage." },
+        { id: 'close_call', icon: '❤️‍🩹', title: "By a Thread", desc: "Win a round with less than 10% health." },
+        { id: 'first_win', icon: '🏆', title: "Champion", desc: "Win your first Match." },
+        { id: 'iron_wall', icon: '🧱', title: "Iron Wall", desc: "Successfully block 5 attacks in one round." },
+        { id: 'specialist', icon: '✨', title: "Specialist", desc: "Use your Special Move 4 times in a round." },
+        { id: 'item_hoarder', icon: '📦', title: "Item Hoarder", desc: "Collect 3 items in a single round." },
+        { id: 'david_goliath', icon: '⚔️', title: "Underdog", desc: "Defeat a Hard CPU." }
+    ];
+
+    let unlockedAch = JSON.parse(localStorage.getItem('neonRumbleAch')) || {};
+
+    function renderAchievementsMenu() {
+        const grid = document.getElementById('ach-list-ui');
+        grid.innerHTML = '';
+        allAchievements.forEach(a => {
+            let isUnlocked = unlockedAch[a.id] === true;
+            grid.innerHTML += `
+                <div class="ach-item ${isUnlocked ? 'unlocked' : ''}">
+                    <div><span class="ach-icon">${isUnlocked ? a.icon : '🔒'}</span> <strong>${a.title}</strong></div>
+                    <div style="color: ${isUnlocked ? '#ccc' : '#666'}">${a.desc}</div>
+                </div>
+            `;
+        });
+    }
+    renderAchievementsMenu();
+
+    function unlockAchievement(id) {
+        if (!unlockedAch[id]) {
+            unlockedAch[id] = true;
+            localStorage.setItem('neonRumbleAch', JSON.stringify(unlockedAch));
+            let achData = allAchievements.find(a => a.id === id);
+            
+            // Show Toast
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `<div class="toast-icon">${achData.icon}</div><div class="toast-content"><strong>Achievement Unlocked!</strong><span>${achData.title}</span></div>`;
+            document.getElementById('toast-container').appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+            renderAchievementsMenu();
+        }
+    }
+
+    // --- GAME STATE VARIABLES ---
+    let gameMode = 'pvp'; let animationId; let gameActive = false;
+    let p1Wins = 0; let p2Wins = 0; let roundTransitioning = false;
+    let comboCount = 0; let comboTimer = 0; 
+    
+    // Round Trackers
+    let roundStats = { firstBlood: false, p1DmgTaken: 0, p2DmgTaken: 0, p1Blocks: 0, p2Blocks: 0, p1Specials: 0, p2Specials: 0, p1Items: 0, p2Items: 0 };
+
+    function setMode(mode) {
+        gameMode = mode;
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-' + mode).classList.add('active');
+        document.getElementById('p2-label').innerText = mode === 'pvp' ? 'PLAYER 2' : 'CPU';
+        document.getElementById('ingame-p2-label').innerText = mode === 'pvp' ? 'Player 2' : 'CPU';
+        document.getElementById('cpu-settings').style.display = mode === 'pve' ? 'block' : 'none';
+    }
+
+    function returnToMenu() {
+        gameActive = false; cancelAnimationFrame(animationId);
+        document.getElementById('game-container').style.display = 'none';
+        document.getElementById('main-menu').style.display = 'block';
+    }
+
+    function startGame() {
+        document.getElementById('main-menu').style.display = 'none';
+        document.getElementById('game-container').style.display = 'flex';
+        p1Wins = 0; p2Wins = 0; comboCount = 0; updateScoreUI();
+        
+        p1 = new Fighter({ id: 'p1', defaultClass: document.getElementById('p1-class').value, startWeapon: parseInt(document.getElementById('p1-weapon').value), isCPU: false, keys: { up: 'w', down: 's', left: 'a', right: 'd', jump: ' ', attack: 'f', special: 'g', block: 'h' } });
+        p2 = new Fighter({ id: 'p2', defaultClass: document.getElementById('p2-class').value, startWeapon: parseInt(document.getElementById('p2-weapon').value), isCPU: gameMode === 'pve', difficulty: document.getElementById('cpu-difficulty').value, keys: { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', jump: 'Enter', attack: '.', special: '/', block: 'Shift' } });
+
+        resetRound(); gameActive = true; animate();
+    }
+
+    function resetRound() {
+        p1.x = 200; p1.y = 0; p1.z = 50; p1.health = p1.maxHealth; p1.blockStamina = 100;
+        p2.x = 600; p2.y = 0; p2.z = 50; p2.health = p2.maxHealth; p2.blockStamina = 100;
+        p1.facing = 'right'; p2.facing = 'left';
+        p1.velocity = {x:0, y:0, z:0}; p2.velocity = {x:0, y:0, z:0};
+        p1.buffs = {speed: 0, damage: 0, reflect: false}; p2.buffs = {speed: 0, damage: 0, reflect: false};
+        items = []; projectiles = []; roundTransitioning = false;
+        
+        roundStats = { firstBlood: false, p1DmgTaken: 0, p2DmgTaken: 0, p1Blocks: 0, p2Blocks: 0, p1Specials: 0, p2Specials: 0, p1Items: 0, p2Items: 0 };
+        updateHealthUI();
+    }
+
+    function updateScoreUI() {
+        document.getElementById('p1-win-1').className = p1Wins >= 1 ? "round-dots dot-won" : "round-dots";
+        document.getElementById('p1-win-2').className = p1Wins >= 2 ? "round-dots dot-won" : "round-dots";
+        document.getElementById('p2-win-1').className = p2Wins >= 1 ? "round-dots dot-won" : "round-dots";
+        document.getElementById('p2-win-2').className = p2Wins >= 2 ? "round-dots dot-won" : "round-dots";
+    }
+
+    function addCombo() {
+        comboCount++; comboTimer = 120;
+        let d = document.getElementById('combo-display');
+        d.innerText = comboCount + " HITS!"; d.style.opacity = 1;
+        d.style.transform = `translateX(-50%) scale(${1 + (comboCount*0.1)})`;
+        setTimeout(() => d.style.transform = `translateX(-50%) scale(1)`, 100);
+
+        if (comboCount >= 3) unlockAchievement('combo_initiate');
+        if (comboCount >= 6) unlockAchievement('combo_master');
+    }
+
+    // --- GAME ENGINE (Pseudo-3D Voxel Rendering) ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const GRAVITY = 0.8; const FRICTION = 0.8; 
+    const BASE_Y = 250; const DEPTH_SCALE = 0.8; 
+    const MIN_Z = 0; const MAX_Z = 150; 
+
+    // 10 Classes
+    const fighterClasses = {
+        ninja: { color: '#0984e3', speedMult: 1.6, jumpPower: 16, name: 'Ninja', maxHealth: 100 },
+        tank: { color: '#d63031', speedMult: 0.7, jumpPower: 12, name: 'Tank', maxHealth: 160 },
+        brawler: { color: '#e17055', speedMult: 1.1, jumpPower: 14, name: 'Brawler', maxHealth: 120 },
+        mage: { color: '#6c5ce7', speedMult: 1.2, jumpPower: 15, name: 'Mage', maxHealth: 90 },
+        assassin: { color: '#2d3436', speedMult: 1.8, jumpPower: 17, name: 'Assassin', maxHealth: 85 },
+        cyborg: { color: '#b2bec3', speedMult: 0.9, jumpPower: 18, name: 'Cyborg', maxHealth: 140 },
+        paladin: { color: '#f1c40f', speedMult: 0.8, jumpPower: 13, name: 'Paladin', maxHealth: 130 },
+        berserker: { color: '#8c14fc', speedMult: 1.3, jumpPower: 15, name: 'Berserker', maxHealth: 150 }, // loses hp naturally
+        sniper: { color: '#00b894', speedMult: 0.6, jumpPower: 11, name: 'Sniper', maxHealth: 95 },
+        monk: { color: '#fdcb6e', speedMult: 1.5, jumpPower: 16, name: 'Monk', maxHealth: 105 }
+    };
+    const weaponTypes = [
+        { name: 'Fists', range: 40, damage: 5, color: '#dfe6e9' }, { name: 'Sword', range: 90, damage: 15, color: '#b2bec3' },
+        { name: 'Dagger', range: 35, damage: 8, color: '#636e72' }, { name: 'Spear', range: 130, damage: 11, color: '#e17055' },
+        { name: 'Hammer', range: 75, damage: 22, color: '#2d3436' }, { name: 'Whip', range: 160, damage: 6, color: '#fd79a8' }
+    ];
+
+    let items = []; let projectiles = []; let p1, p2;
+
+    function toScreen(x, y, z) { return { sx: x, sy: BASE_Y + (z * DEPTH_SCALE) - y }; }
+
+    // 3D Voxel Box Drawer
+    function drawVoxel(x, y, z, width, height, depth, baseColor) {
+        let { sx, sy } = toScreen(x, y, z);
+        let screenDepth = depth * DEPTH_SCALE;
+        
+        // Parse base color for shading
+        ctx.fillStyle = baseColor;
+        let topColor = 'rgba(255,255,255,0.3)';
+        let sideColor = 'rgba(0,0,0,0.4)';
+
+        // Draw Shadow on floor
+        if (y > 0) {
+            let sFloor = toScreen(x, 0, z);
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath(); ctx.ellipse(sFloor.sx + width/2, sFloor.sy + screenDepth/2, width/1.2, screenDepth/1.2, 0, 0, Math.PI*2); ctx.fill();
+        }
+
+        // Back Side (Hidden usually, drawn for integrity)
+        ctx.fillStyle = baseColor;
+        
+        // Right/Left Side Face
+        ctx.fillStyle = baseColor;
+        ctx.beginPath();
+        ctx.moveTo(sx + width, sy);
+        ctx.lineTo(sx + width + screenDepth/2, sy - screenDepth/2);
+        ctx.lineTo(sx + width + screenDepth/2, sy + height - screenDepth/2);
+        ctx.lineTo(sx + width, sy + height);
+        ctx.fill();
+        ctx.fillStyle = sideColor; ctx.fill(); // Shade side
+        
+        // Top Face
+        ctx.fillStyle = baseColor;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + screenDepth/2, sy - screenDepth/2);
+        ctx.lineTo(sx + width + screenDepth/2, sy - screenDepth/2);
+        ctx.lineTo(sx + width, sy);
+        ctx.fill();
+        ctx.fillStyle = topColor; ctx.fill(); // Highlight top
+
+        // Front Face
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(sx, sy, width, height);
+    }
+
+    class Item {
+        constructor() {
+            this.x = Math.random() * (canvas.width - 100) + 50; this.z = Math.random() * MAX_Z; this.y = 200; 
+            this.width = 20; this.height = 20; this.active = true;
+            this.type = ['health', 'speed', 'damage'][Math.floor(Math.random() * 3)];
+            this.color = this.type === 'health' ? '#00b894' : this.type === 'speed' ? '#fdcb6e' : '#e84393';
+        }
+        update() { if (this.y > 0) this.y -= 4; else this.y = 0; }
+        draw() { if (this.active) drawVoxel(this.x, this.y, this.z, this.width, this.height, 20, this.color); }
+    }
+
+    class Projectile {
+        constructor(x, y, z, vx, ownerId, color, dmg, pierce = false) {
+            this.x = x; this.y = y; this.z = z; this.vx = vx;
+            this.width = 20; this.height = 10; this.ownerId = ownerId;
+            this.color = color; this.active = true; this.damage = dmg; this.pierce = pierce;
+        }
+        update() { this.x += this.vx; }
+        draw() { if(this.active) drawVoxel(this.x, this.y, this.z, this.width, this.height, 10, this.color); }
+    }
+
+    class Fighter {
+        constructor({ id, keys, defaultClass, startWeapon, isCPU, difficulty }) {
+            this.width = 40; this.height = 80;
+            this.keysMap = keys; this.inputs = { up:0, down:0, left:0, right:0, jump:0, attack:0, special:0, block:0 };
+            this.id = id; this.isCPU = isCPU; this.difficulty = difficulty;
+            this.weapon = weaponTypes[startWeapon]; this.isAttacking = false;
+            this.specialCooldown = 0; this.buffs = { speed: 0, damage: 0, reflect: false };
+            this.fighterClass = fighterClasses[defaultClass];
+            this.color = this.fighterClass.color; this.maxHealth = this.fighterClass.maxHealth;
+            this.blockStamina = 100; this.attackTimer = 0;
+            this.healTick = 0;
+        }
+
+        useSpecial() {
+            if (this.specialCooldown > 0) return;
+            const dir = this.facing === 'right' ? 1 : -1;
+            
+            if(this.id === 'p1') { roundStats.p1Specials++; if(roundStats.p1Specials >= 4) unlockAchievement('specialist'); }
+            if(this.id === 'p2') roundStats.p2Specials++;
+
+            if (this.fighterClass.name === 'Ninja') {
+                projectiles.push(new Projectile(this.x+20, this.y+40, this.z, dir*16, this.id, '#fff', 10));
+                this.specialCooldown = 80;
+            } else if (this.fighterClass.name === 'Tank') {
+                this.isAttacking = true; let oldWep = this.weapon;
+                this.weapon = { name: 'Slam', range: 100, damage: 25, color: '#e67e22' };
+                this.velocity.y = 15; setTimeout(() => { this.isAttacking = false; this.weapon = oldWep; }, 300);
+                this.specialCooldown = 150; 
+            } else if (this.fighterClass.name === 'Brawler') {
+                this.buffs.damage = 200; this.buffs.speed = 200; this.specialCooldown = 350;
+            } else if (this.fighterClass.name === 'Mage') {
+                projectiles.push(new Projectile(this.x, this.y+40, this.z, dir*12, this.id, '#a29bfe', 8));
+                projectiles.push(new Projectile(this.x, this.y+40, this.z-30, dir*12, this.id, '#a29bfe', 8));
+                projectiles.push(new Projectile(this.x, this.y+40, this.z+30, dir*12, this.id, '#a29bfe', 8));
+                this.specialCooldown = 120;
+            } else if (this.fighterClass.name === 'Assassin') {
+                this.x += dir * 250; this.specialCooldown = 90;
+            } else if (this.fighterClass.name === 'Cyborg') {
+                projectiles.push(new Projectile(this.x, this.y+40, this.z, dir*22, this.id, '#ff7675', 20));
+                this.specialCooldown = 180;
+            } else if (this.fighterClass.name === 'Paladin') {
+                this.health = Math.min(this.maxHealth, this.health + 30);
+                this.blockStamina = 100; this.specialCooldown = 250;
+            } else if (this.fighterClass.name === 'Berserker') {
+                this.velocity.y = 20; this.x += dir * 150; // Huge leap
+                this.specialCooldown = 120;
+            } else if (this.fighterClass.name === 'Sniper') {
+                projectiles.push(new Projectile(this.x, this.y+50, this.z, dir*30, this.id, '#fff', 35, true)); // Pierce
+                this.specialCooldown = 200;
+            } else if (this.fighterClass.name === 'Monk') {
+                this.buffs.reflect = true; setTimeout(() => this.buffs.reflect = false, 2000); // 2 sec reflect
+                this.specialCooldown = 300;
+            }
+        }
+
+        attack() {
+            if (!this.isAttacking && !this.inputs.block) {
+                this.isAttacking = true;
+                setTimeout(() => { this.isAttacking = false; }, 150);
+            }
+        }
+
+        runCPU(opponent) {
+            if (!this.isCPU || roundTransitioning) return;
+            this.inputs = { up:0, down:0, left:0, right:0, jump:0, attack:0, special:0, block:0 };
+            this.attackTimer++;
+            const distX = opponent.x - this.x; const distZ = opponent.z - this.z;
+            const absX = Math.abs(distX); const absZ = Math.abs(distZ);
+            let diffMult = this.difficulty === 'hard' ? 1 : this.difficulty === 'medium' ? 0.6 : 0.3;
+
+            if (absZ > 15) { if (distZ > 0) this.inputs.down = true; else this.inputs.up = true; }
+            
+            if (absX > this.weapon.range - 10) {
+                if (distX > 0) this.inputs.right = true; else this.inputs.left = true;
+            } else if (diffMult > 0.5 && this.health < 40 && absX < 80) {
+                if (distX > 0) this.inputs.left = true; else this.inputs.right = true; 
+            }
+
+            if (absX <= this.weapon.range && absZ <= 30 && this.attackTimer > (60 - diffMult*40)) {
+                if (opponent.isAttacking && Math.random() < diffMult) this.inputs.block = true;
+                else { this.attack(); this.attackTimer = 0; }
+            }
+
+            if (this.specialCooldown === 0 && Math.random() < 0.02 * diffMult) this.useSpecial();
+        }
+
+        update(opponent) {
+            if (this.buffs.speed > 0) this.buffs.speed--;
+            if (this.buffs.damage > 0) this.buffs.damage--;
+            if (this.specialCooldown > 0) this.specialCooldown--;
+
+            // Class Passives
+            if (this.fighterClass.name === 'Paladin') {
+                this.healTick++; if(this.healTick > 120 && this.health > 0) { this.health = Math.min(this.maxHealth, this.health + 1); this.healTick = 0; }
+            }
+            if (this.fighterClass.name === 'Berserker') {
+                this.healTick++; if(this.healTick > 60 && this.health > 1) { this.health -= 0.5; this.healTick = 0; } // Drains HP
+            }
+
+            if (this.isCPU) this.runCPU(opponent);
+
+            let isBlocking = this.inputs.block && this.blockStamina > 0 && this.y === 0 && !this.isAttacking;
+            if (isBlocking) this.blockStamina -= 0.5;
+            else if (this.blockStamina < 100) this.blockStamina += 0.2;
+
+            let spd = (1.5 * this.fighterClass.speedMult * (this.buffs.speed > 0 ? 1.5 : 1));
+            if (isBlocking) spd *= 0.3; 
+
+            if (!this.isAttacking || this.y > 0) {
+                if (this.inputs.left) { this.velocity.x -= spd; this.facing = 'left'; }
+                if (this.inputs.right) { this.velocity.x += spd; this.facing = 'right'; }
+                if (this.inputs.up) this.velocity.z -= spd * 0.8;
+                if (this.inputs.down) this.velocity.z += spd * 0.8;
+            }
+
+            this.velocity.x *= FRICTION; this.velocity.z *= FRICTION;
+            this.x += this.velocity.x; this.z += this.velocity.z;
+
+            if (this.y > 0 || this.velocity.y !== 0) { this.velocity.y -= GRAVITY; this.y += this.velocity.y; }
+            if (this.y <= 0) {
+                this.y = 0; this.velocity.y = 0;
+                if (this.inputs.jump && !isBlocking) this.velocity.y = this.fighterClass.jumpPower;
+            }
+
+            if (this.x < 0) this.x = 0; if (this.x > canvas.width - this.width) this.x = canvas.width - this.width;
+            if (this.z < MIN_Z) this.z = MIN_Z; if (this.z > MAX_Z) this.z = MAX_Z;
+
+            this.attackBox = { 
+                width: this.weapon.range, zDepth: 30,
+                x: this.facing === 'right' ? this.x + this.width : this.x - this.weapon.range,
+                y: this.y + 30, z: this.z
+            };
+        }
+
+        draw() {
+            let isBlocking = this.inputs.block && this.blockStamina > 0 && this.y === 0 && !this.isAttacking;
+            let drawColor = (this.buffs.damage > 0 && Math.floor(Date.now()/100)%2===0) ? '#ff0000' : this.color;
+            if (this.buffs.reflect) drawColor = '#fff'; // White when reflecting
+
+            if (isBlocking) ctx.filter = 'brightness(0.5)';
+            drawVoxel(this.x, this.y, this.z, this.width, this.height, 40, drawColor);
+            ctx.filter = 'none';
+
+            let { sx, sy } = toScreen(this.x, this.y, this.z);
+            let eyeX = this.facing === 'right' ? sx + 25 : sx + 5;
+            ctx.fillStyle = '#000'; ctx.fillRect(eyeX, sy + 15, 10, 6);
+            ctx.fillStyle = this.isCPU ? '#ff0000' : '#00ffff'; 
+            ctx.fillRect(this.facing === 'right' ? eyeX + 6 : eyeX + 2, sy + 16, 2, 4);
+
+            if (isBlocking) {
+                ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(sx + this.width/2, sy + this.height/2, 45, 0, Math.PI*2); ctx.stroke();
+            }
+
+            if (this.isAttacking) {
+                let atkP = toScreen(this.attackBox.x, this.attackBox.y, this.attackBox.z);
+                ctx.fillStyle = this.weapon.color; ctx.globalAlpha = 0.6;
+                ctx.fillRect(atkP.sx, atkP.sy, this.attackBox.width, 15);
+                ctx.globalAlpha = 1.0; ctx.strokeStyle = '#fff'; ctx.strokeRect(atkP.sx, atkP.sy, this.attackBox.width, 15);
+            }
+        }
+    }
+
+    // --- INPUTS ---
+    window.addEventListener('keydown', (e) => { 
+        if (!gameActive || roundTransitioning) return;
+        let k = e.key.toLowerCase(); if (e.key === 'Shift') k = 'shift'; else if (e.key.startsWith('Arrow')) k = e.key;
+
+        [p1, p2].forEach(p => {
+            if (p.isCPU) return;
+            if (k === p.keysMap.up.toLowerCase() || k === p.keysMap.up) p.inputs.up = true;
+            if (k === p.keysMap.down.toLowerCase() || k === p.keysMap.down) p.inputs.down = true;
+            if (k === p.keysMap.left.toLowerCase() || k === p.keysMap.left) p.inputs.left = true;
+            if (k === p.keysMap.right.toLowerCase() || k === p.keysMap.right) p.inputs.right = true;
+            if (k === p.keysMap.jump.toLowerCase() || k === p.keysMap.jump) p.inputs.jump = true;
+            if (k === p.keysMap.block.toLowerCase() || k === p.keysMap.block) p.inputs.block = true;
+            if (k === p.keysMap.attack.toLowerCase() || k === p.keysMap.attack) p.attack();
+            if (k === p.keysMap.special.toLowerCase() || k === p.keysMap.special) p.useSpecial();
+        });
+    });
+
+    window.addEventListener('keyup', (e) => { 
+        if (!gameActive) return;
+        let k = e.key.toLowerCase(); if (e.key === 'Shift') k = 'shift'; else if (e.key.startsWith('Arrow')) k = e.key;
+
+        [p1, p2].forEach(p => {
+            if (p.isCPU) return;
+            if (k === p.keysMap.up.toLowerCase() || k === p.keysMap.up) p.inputs.up = false;
+            if (k === p.keysMap.down.toLowerCase() || k === p.keysMap.down) p.inputs.down = false;
+            if (k === p.keysMap.left.toLowerCase() || k === p.keysMap.left) p.inputs.left = false;
+            if (k === p.keysMap.right.toLowerCase() || k === p.keysMap.right) p.inputs.right = false;
+            if (k === p.keysMap.jump.toLowerCase() || k === p.keysMap.jump) p.inputs.jump = false;
+            if (k === p.keysMap.block.toLowerCase() || k === p.keysMap.block) p.inputs.block = false;
+        });
+    });
+
+    // --- LOGIC ---
+    function checkHit(box, target) {
+        return (box.x < target.x + target.width && box.x + box.width > target.x && 
+                box.y < target.y + target.height && box.y + 20 > target.y && 
+                Math.abs(box.z - target.z) <= box.zDepth);
+    }
+
+    function updateHealthUI() {
+        if (roundTransitioning) return;
+        document.getElementById('p1-health').style.width = Math.max(0, (p1.health / p1.maxHealth * 100)) + '%';
+        document.getElementById('p2-health').style.width = Math.max(0, (p2.health / p2.maxHealth * 100)) + '%';
+        document.getElementById('p1-block').style.width = Math.max(0, p1.blockStamina) + '%';
+        document.getElementById('p2-block').style.width = Math.max(0, p2.blockStamina) + '%';
+        
+        if (p1.health <= 0 || p2.health <= 0) {
+            roundTransitioning = true;
+            let winner = p1.health <= 0 ? p2 : p1;
+            let loser = p1.health <= 0 ? p1 : p2;
+            
+            if (winner === p1) p1Wins++; else p2Wins++;
+            updateScoreUI();
+
+            // Check End-of-Round Achievements
+            if (winner === p1) {
+                if (roundStats.p1DmgTaken === 0) unlockAchievement('flawless');
+                if ((p1.health / p1.maxHealth) < 0.1) unlockAchievement('close_call');
+            }
+
+            setTimeout(() => {
+                if (p1Wins >= 2 || p2Wins >= 2) {
+                    let matchWinnerStr = p1Wins >= 2 ? "Player 1" : (gameMode === 'pve' ? "CPU" : "Player 2");
+                    
+                    // Match Achievements
+                    if (p1Wins >= 2) unlockAchievement('first_win');
+                    if (p1Wins >= 2 && gameMode === 'pve' && document.getElementById('cpu-difficulty').value === 'hard') unlockAchievement('david_goliath');
+                    
+                    alert(matchWinnerStr + " Wins the Match!");
+                    returnToMenu();
+                } else { resetRound(); }
+            }, 1500);
+        }
+    }
+
+    function handleDamage(attacker, defender, baseDmg) {
+        if (!roundStats.firstBlood) { roundStats.firstBlood = true; if(attacker.id === 'p1') unlockAchievement('first_blood'); }
+        
+        let isBlocking = defender.inputs.block && defender.blockStamina > 0 && defender.y === 0 && !defender.isAttacking;
+        let dir = attacker.x < defender.x ? 1 : -1;
+        
+        if (defender.buffs.reflect) {
+            attacker.health -= baseDmg; // Bounce back
+            attacker.velocity.x += dir * -5;
+        } else if (isBlocking) {
+            defender.health -= baseDmg * 0.2; defender.velocity.x += dir * 2;
+            if(defender.id === 'p1') { roundStats.p1Blocks++; if(roundStats.p1Blocks >= 5) unlockAchievement('iron_wall'); }
+        } else {
+            let totalDmg = (attacker.buffs.damage > 0) ? baseDmg * 2 : baseDmg;
+            defender.health -= totalDmg; defender.velocity.x += dir * 10;
+            if(defender.id === 'p1') roundStats.p1DmgTaken += totalDmg; else roundStats.p2DmgTaken += totalDmg;
+            if(attacker.id === 'p1') addCombo();
+        }
+        updateHealthUI();
+    }
+
+    function checkInteractions() {
+        if (roundTransitioning) return;
+
+        [ {atk: p1, def: p2}, {atk: p2, def: p1} ].forEach(({atk, def}) => {
+            if (atk.isAttacking && checkHit(atk.attackBox, def)) {
+                handleDamage(atk, def, atk.weapon.damage);
+                atk.isAttacking = false; 
+            }
+        });
+
+        projectiles.forEach((proj, index) => {
+            if (proj.active) {
+                let target = proj.ownerId === 'p1' ? p2 : p1;
+                if (checkHit({x: proj.x, y: proj.y, z: proj.z, width: proj.width, zDepth: 20}, target)) {
+                    let attacker = proj.ownerId === 'p1' ? p1 : p2;
+                    handleDamage(attacker, target, proj.damage);
+                    if(!proj.pierce) projectiles.splice(index, 1);
+                }
+                if (proj.x < -100 || proj.x > canvas.width + 100) projectiles.splice(index, 1);
+            }
+        });
+
+        items.forEach((item, index) => {
+            if (item.active && item.y === 0) {
+                [p1, p2].forEach(p => {
+                    if (Math.abs(p.x - item.x) < 30 && Math.abs(p.z - item.z) < 20 && p.y < 30) {
+                        if (item.type === 'health') p.health = Math.min(p.maxHealth, p.health + 40);
+                        if (item.type === 'speed') p.buffs.speed = 300;
+                        if (item.type === 'damage') p.buffs.damage = 300;
+                        items.splice(index, 1); updateHealthUI();
+                        
+                        if(p.id === 'p1') { roundStats.p1Items++; if(roundStats.p1Items >= 3) unlockAchievement('item_hoarder'); }
+                    }
+                });
+            }
+        });
+    }
+
+    setInterval(() => { if (gameActive && !roundTransitioning && items.length < 2) items.push(new Item()); }, 8000);
+
+    // --- LOOP ---
+    function animate() {
+        if (!gameActive) return;
+        animationId = window.requestAnimationFrame(animate);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Env
+        ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, canvas.width, BASE_Y);
+        let floorGrad = ctx.createLinearGradient(0, BASE_Y, 0, canvas.height);
+        floorGrad.addColorStop(0, '#111'); floorGrad.addColorStop(1, '#2c3e50');
+        ctx.fillStyle = floorGrad; ctx.fillRect(0, BASE_Y, canvas.width, canvas.height - BASE_Y);
+        
+        // Depth grid
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)'; ctx.lineWidth = 1;
+        for(let z = MIN_Z; z <= MAX_Z; z += 30) {
+            let sy = BASE_Y + (z * DEPTH_SCALE); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(canvas.width, sy); ctx.stroke();
+        }
+
+        // Z-Sorting Rendering
+        let renderQ = [p1, p2, ...items, ...projectiles];
+        renderQ.sort((a, b) => a.z - b.z);
+
+        renderQ.forEach(ent => {
+            if (ent instanceof Fighter) ent.update(ent === p1 ? p2 : p1);
+            if (ent instanceof Item || ent instanceof Projectile) ent.update();
+            ent.draw();
+        });
+
+        checkInteractions();
+    }
+</script>
+
+</body>
+</html>

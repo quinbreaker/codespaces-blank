@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced AI & Multiplayer Chess</title>
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background: #2c3e50; color: white; }
+        #board { width: 400px; margin: 20px; }
+        .controls { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        select, button { padding: 8px; border-radius: 4px; border: none; cursor: pointer; font-size: 14px; }
+        button { background: #27ae60; color: white; font-weight: bold; margin-top: 22px; height: 35px; }
+        button:hover { background: #2ecc71; }
+        .action-buttons { display: flex; gap: 10px; }
+        #status { font-weight: bold; color: #f1c40f; }
+    </style>
+</head>
+<body>
+
+    <h2>Chess: AI & Local Multiplayer</h2>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label>Game Mode:</label>
+            <select id="gamemode" onchange="resetGame()">
+                <option value="ai" selected>Player vs AI</option>
+                <option value="human">Player vs Player (Local)</option>
+            </select>
+        </div>
+
+        <div class="control-group" id="ai-controls-1">
+            <label>AI Difficulty:</label>
+            <select id="difficulty">
+                <option value="0">Beginner (Random)</option>
+                <option value="1">Easy (Depth 1)</option>
+                <option value="2" selected>Medium (Depth 2)</option>
+                <option value="3">Hard (Depth 3)</option>
+                <option value="4">Expert (Depth 4)</option>
+            </select>
+        </div>
+
+        <div class="control-group" id="ai-controls-2">
+            <label>AI Playstyle:</label>
+            <select id="playstyle">
+                <option value="positional" selected>Positional</option>
+                <option value="standard">Standard</option>
+                <option value="aggressive">Aggressive</option>
+            </select>
+        </div>
+
+        <div class="action-buttons">
+            <button onclick="resetGame()">Reset</button>
+            <button onclick="flipBoard()" style="background: #e67e22;">Flip Board</button>
+        </div>
+    </div>
+
+    <div id="board"></div>
+    <p>Status: <span id="status">White to move</span></p>
+
+<script>
+let board = null;
+let game = new Chess();
+let $status = $('#status');
+
+// Piece Weights & PSTs
+const baseValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+const aggressiveValues = { p: 80, n: 400, b: 330, r: 500, q: 1200, k: 20000 };
+
+const pstKnight = [
+    [-50,-40,-30,-30,-30,-30,-40,-50],
+    [-40,-20,  0,  0,  0,  0,-20,-40],
+    [-30,  0, 10, 15, 15, 10,  0,-30],
+    [-30,  5, 15, 20, 20, 15,  5,-30],
+    [-30,  0, 15, 20, 20, 15,  0,-30],
+    [-30,  5, 10, 15, 15, 10,  5,-30],
+    [-40,-20,  0,  5,  5,  0,-20,-40],
+    [-50,-40,-30,-30,-30,-30,-40,-50]
+];
+
+const pstPawn = [
+    [0,  0,  0,  0,  0,  0,  0,  0],
+    [50, 50, 50, 50, 50, 50, 50, 50],
+    [10, 10, 20, 30, 30, 20, 10, 10],
+    [5,  5, 10, 25, 25, 10,  5,  5],
+    [0,  0,  0, 20, 20,  0,  0,  0],
+    [5, -5,-10,  0,  0,-10, -5,  5],
+    [5, 10, 10,-20,-20, 10, 10,  5],
+    [0,  0,  0,  0,  0,  0,  0,  0]
+];
+
+function evaluateBoard(game) {
+    let totalEvaluation = 0;
+    const boardState = game.board();
+    const style = $('#playstyle').val();
+
+    for (let i = 0; i < 8; i++) {
+        for (let j = 0; j < 8; j++) {
+            if (boardState[i][j] === null) continue;
+            let piece = boardState[i][j];
+            let val = style === 'aggressive' ? aggressiveValues[piece.type] : baseValues[piece.type];
+
+            if (style === 'positional') {
+                let rank = piece.color === 'w' ? i : 7 - i;
+                if (piece.type === 'n') val += pstKnight[rank][j];
+                if (piece.type === 'p') val += pstPawn[rank][j];
+            }
+            totalEvaluation += piece.color === 'w' ? val : -val;
+        }
+    }
+    return totalEvaluation;
+}
+
+function minimax(game, depth, alpha, beta, isMaximizingPlayer) {
+    if (depth === 0) return -evaluateBoard(game);
+    let moves = game.moves();
+    
+    if (isMaximizingPlayer) {
+        let bestEval = -99999;
+        for (let move of moves) {
+            game.move(move);
+            bestEval = Math.max(bestEval, minimax(game, depth - 1, alpha, beta, !isMaximizingPlayer));
+            game.undo();
+            alpha = Math.max(alpha, bestEval);
+            if (beta <= alpha) break;
+        }
+        return bestEval;
+    } else {
+        let bestEval = 99999;
+        for (let move of moves) {
+            game.move(move);
+            bestEval = Math.min(bestEval, minimax(game, depth - 1, alpha, beta, !isMaximizingPlayer));
+            game.undo();
+            beta = Math.min(beta, bestEval);
+            if (beta <= alpha) break;
+        }
+        return bestEval;
+    }
+}
+
+function makeBestMove() {
+    if ($('#gamemode').val() === 'human') return; // Don't let AI move in PvP mode
+    
+    const depth = parseInt($('#difficulty').val());
+    let moves = game.moves();
+    if (game.game_over()) return;
+
+    if (depth === 0) {
+        let randomIdx = Math.floor(Math.random() * moves.length);
+        game.move(moves[randomIdx]);
+    } else {
+        let bestMove = null;
+        let bestValue = -99999;
+        moves.sort(() => Math.random() - 0.5); // Shuffle
+
+        for (let move of moves) {
+            game.move(move);
+            let boardValue = minimax(game, depth - 1, -100000, 100000, false);
+            game.undo();
+            if (boardValue > bestValue) {
+                bestValue = boardValue;
+                bestMove = move;
+            }
+        }
+        game.move(bestMove);
+    }
+    board.position(game.fen());
+    updateStatus();
+}
+
+function onDragStart(source, piece, position, orientation) {
+    if (game.game_over()) return false;
+
+    let mode = $('#gamemode').val();
+    
+    // If Player vs AI, player can only move White
+    if (mode === 'ai' && piece.search(/^b/) !== -1) return false;
+    
+    // If PvP, make sure players can only move pieces on their actual turn
+    if (mode === 'human') {
+        if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+            (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+            return false;
+        }
+    }
+}
+
+function onDrop(source, target) {
+    let move = game.move({ from: source, to: target, promotion: 'q' });
+    if (move === null) return 'snapback';
+    
+    updateStatus();
+
+    let mode = $('#gamemode').val();
+    if (mode === 'ai') {
+        window.setTimeout(makeBestMove, 250);
+    }
+}
+
+function updateStatus() {
+    let status = '';
+    let moveColor = game.turn() === 'w' ? 'White' : 'Black';
+
+    if (game.in_checkmate()) status = `Game Over: ${moveColor} is in checkmate.`;
+    else if (game.in_draw()) status = 'Game Over: Draw';
+    else {
+        status = `${moveColor} to move`;
+        if (game.in_check()) status += ', ' + moveColor + ' is in check!';
+        
+        let mode = $('#gamemode').val();
+        if (mode === 'ai' && game.turn() === 'b' && !game.game_over()) {
+            status = 'AI is thinking...';
+        }
+    }
+    $status.html(status);
+}
+
+function resetGame() {
+    game.reset();
+    board.start();
+    board.orientation('white');
+    
+    // Hide AI controls if playing PvP
+    if ($('#gamemode').val() === 'human') {
+        $('#ai-controls-1, #ai-controls-2').hide();
+    } else {
+        $('#ai-controls-1, #ai-controls-2').show();
+    }
+    
+    updateStatus();
+}
+
+function flipBoard() {
+    board.flip();
+}
+
+const config = {
+    draggable: true,
+    position: 'start',
+    onDragStart: onDragStart,
+    onDrop: onDrop,
+    pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+};
+
+board = Chessboard('board', config);
+resetGame(); // Initialize UI state properly
+</script>
+</body>
+</html>

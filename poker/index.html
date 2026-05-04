@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Casino</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        #game-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-bottom: 10px;
+            border: 1px solid #333;
+            padding: 10px;
+            background-color: #000;
+        }
+        #input-container {
+            display: flex;
+        }
+        #cmd-input {
+            flex-grow: 1;
+            background-color: #000;
+            color: #00ff00;
+            border: 1px solid #333;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 16px;
+            padding: 5px;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container"></div>
+    <div id="input-container">
+        <span style="padding: 5px;">></span>
+        <input type="text" id="cmd-input" disabled autocomplete="off">
+    </div>
+
+<script>
+// --- Configuration & Constants ---
+const SUITS = ['♠', '♥', '♦', '♣'];
+const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+const VALUES = {};
+// 'A' becomes 14 for Poker
+RANKS.forEach((r, i) => VALUES[r] = i + 2); 
+
+const BJ_VALUES = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
+    'J': 10, 'Q': 10, 'K': 10, 'A': 11
+};
+
+const ACHIEVEMENTS_DB = {
+        // --- Progression (Games Played) ---
+    "newbie":       {"title": "Welcome To The Casino", "desc": "Play your first game."},
+    "regular":      {"title": "I Got A Feeling", "desc": "Play 10 games."},
+    "veteran":      {"title": "Can't Be Effective Be Persistant", "desc": "Play 50 games."},
+    "addict":       {"title": "Can't Stop", "desc": "Play 100 games."},
+    "lifetimer":    {"title": "Resident Evil", "desc": "Play 1,000 games. (Legendary)"},
+
+    // --- Wealth (Money) ---
+    "broke":        {"title": "Back To The Bank", "desc": "Hit $0 balance."},
+    "flat_broke":   {"title": "Frequent Flyer", "desc": "Hit $0 balance 3 separate times. (Normal)"},
+    "high_roller":  {"title": "High Roller", "desc": "Accumulate $2,500."},
+    "tycoon":       {"title": "Tycoon", "desc": "Accumulate $10,000."},
+    "whale":        {"title": "The Whale", "desc": "Accumulate $50,000."},
+    "millionaire":  {"title": "The 1 Percent", "desc": "Accumulate $1,000,000. (Legendary)"},
+    "bankrupt_house":{"title": "The House Loses", "desc": "Accumulate $10,000,000. (Legendary)"}, // LEGENDARY 6 (NEW)
+    "comeback":     {"title": "Lazarus", "desc": "Recover to $1000 after hitting $0."},
+    "dollar_dream": {"title": "A Dollar & A Dream", "desc": "Win a game while having exactly $1 left (before winnings). (Rare)"},
+    "sequence":     {"title": "Orderly Chaos", "desc": "Have exactly $12,345 in your wallet. (Rare)"},
+
+    // --- Debt (Loans) ---
+    "borrower":     {"title": "A Small Loan", "desc": "Take out your first loan."},
+    "frequent_borrower": {"title": "Regular Customer", "desc": "Visit the Loan Shark 5 times. (Normal)"},
+    "debt_trap":    {"title": "In a Hole", "desc": "Owe the bank more than $2,000."},
+    "in_the_red":   {"title": "Deep Water", "desc": "Owe the bank more than $5,000. (Normal)"},
+    "max_debt":     {"title": "Keep on Digging", "desc": "Owe the bank over $10,000."},
+    "living_edge":  {"title": "Living on the Edge", "desc": "Win a game while owing > $10,000. (Rare)"},
+    "debt_free":    {"title": "You Always Come Back", "desc": "Pay off a debt completely."},
+    "clean_slate":  {"title": "Clean Slate", "desc": "Repay exactly $50,000 in a single transaction. (Legendary)"}, // LEGENDARY 7 (NEW)
+    "responsible":  {"title": "Credit Score 800", "desc": "Repay a total of $5,000 in debts."},
+
+    // --- Betting ---
+    "penny_pincher": {"title": "Cowards Bet", "desc": "Bet exactly $1."},
+    "all_in":       {"title": "Lets Go Gambling", "desc": "Bet your entire wallet balance."},
+    "big_spender":  {"title": "Making it Rain", "desc": "Bet $1,000 or more in a single hand."},
+    "high_stakes_hero": {"title": "Titan of Industry", "desc": "Win a single bet of $10,000 or more. (Legendary)"},
+
+    // --- Winning/Losing ---
+    "first_win":    {"title": "The First Of Many", "desc": "Win your first game."},
+    "winner_10":    {"title": "Heating Up", "desc": "Win 10 games total."},
+    "winner_25":    {"title": "Semi-Pro", "desc": "Win 25 games total. (Normal)"},
+    "winner_50":    {"title": "Champion", "desc": "Win 50 games total."},
+    "loser_10":     {"title": "The House Always Wins", "desc": "Lose 10 games total."},
+    "unlucky_25":   {"title": "Bad Omen", "desc": "Lose 25 games total. (Normal)"},
+    "streak_3":     {"title": "Lucky Streak", "desc": "Win 3 games in a row."},
+    "streak_5":     {"title": "Bad Feeling About This", "desc": "Win 5 games in a row."},
+    "immortal":     {"title": "Unstoppable Force", "desc": "Win 20 games in a row. (Legendary)"},
+    "perfect_run":  {"title": "Perfect Run", "desc": "Win 50 games in a row. (Legendary)"}, // LEGENDARY 8 (NEW)
+    "cold_streak":  {"title": "Snake Eyes", "desc": "Lose 5 games in a row."},
+    "stalemate":    {"title": "Gridlock", "desc": "Get 3 Ties/Pushes in a row. (Rare)"},
+
+    // --- Blackjack Specifics ---
+    "bj_native":    {"title": "Lucky Duck", "desc": "Get a Natural Blackjack (first two cards)."},
+    "god_mode":     {"title": "Card Counter", "desc": "Get 3 Natural Blackjacks in a row. (Legendary)"},
+    "oracle":       {"title": "The Oracle", "desc": "Win 10 Double Down bets in a row. (Legendary)"}, // LEGENDARY 9 (NEW)
+    "bj_master":    {"title": "21 Master", "desc": "Get Blackjack 10 times."},
+    "bust_master":  {"title": "Bust-a-Move", "desc": "Bust (go over 21) 10 times."},
+    "close_call":   {"title": "RNG Jesus' luck", "desc": "Win a hand with exactly 21 points."},
+    "solid_20":     {"title": "Solid Foundation", "desc": "Win a hand with exactly 20 points. (Normal)"},
+    "low_ball":     {"title": "Underdog", "desc": "Win a Blackjack hand with a score less than 17."},
+    "charlie":      {"title": "Five Card Charlie", "desc": "Draw 5 cards in Blackjack without busting. (Rare)"},
+    "push_it":      {"title": "Tough Luck", "desc": "Get a Push (Tie) 5 times."},
+    "hit_me":       {"title": "Luck Of the Gamble", "desc": "Hit 3 times in one hand and don't bust."},
+
+    // --- Poker Hands ---
+    "poker_pair":   {"title": "A Little Something", "desc": "Get One Pair."},
+    "poker_2pair":  {"title": "Double Trouble", "desc": "Get Two Pairs."},
+    "poker_trips":  {"title": "Three's Company", "desc": "Get Three of a Kind."},
+    "poker_straight": {"title": "Straight Shot", "desc": "Get a Straight."},
+    "poker_flush":  {"title": "Suited Up", "desc": "Get a Flush."},
+    "poker_full":   {"title": "Full House", "desc": "Get a Full House."},
+    "poker_quads":  {"title": "Four Horsemen", "desc": "Get Four of a Kind."},
+    "poker_sf":     {"title": "Legendary", "desc": "Get a Straight Flush."},
+    "poker_royal":  {"title": "The Might Of The British", "desc": "Get a Royal Flush (A-10 same suit)."},
+    "golden_hand":  {"title": "Golden Hand", "desc": "Win a game with a Royal Flush. (Legendary)"}, // LEGENDARY 10 (NEW)
+    "fold_master":  {"title": "Know When to Fold", "desc": "Lose a poker hand with High Card only."},
+    "bluffer":      {"title": "Stone Cold Bluffer", "desc": "Win a poker hand with only a High Card. (Rare)"},
+    "poker_face":   {"title": "Poker Face", "desc": "Win 3 Poker games in a row. (Rare)"},
+    
+    // --- Rare & Misc ---
+    "grinder":      {"title": "True Gambler", "desc": "Earn a total of $100,000 (cumulative)."},
+    "balanced":     {"title": "Perfectly Balanced", "desc": "End a game with exactly $1000 again."},
+    "devil":        {"title": "Number Of The Beast", "desc": "Have exactly $666 in your wallet."},
+    "lucky_7":      {"title": "Lucky 7", "desc": "Draw a 7 of Hearts in any game."},
+    "ace_hole":     {"title": "Ace In The Hole", "desc": "Hold 3 or more Aces in one hand."},
+    "suit_spade":   {"title": "Are You Sure?", "desc": "Hold 4 Spades in one hand."},
+    "suit_heart":   {"title": "Romeo", "desc": "Hold 4 Hearts in one hand."},
+    "sniper":       {"title": "Sniper", "desc": "Win against the Dealer by exactly 1 point."},
+    "overkill":     {"title": "Shoot For The Stars", "desc": "Beat the dealer by 10 or more points."},
+    "empty_hand":   {"title": "Rigged Game", "desc": "Discard 5 cards in Poker."},
+    "stat_nerd":    {"title": "Analyst", "desc": "Check your statistics 5 times. (Normal)"},
+    "jackpot_start":{"title": "Beginner's Luck", "desc": "Win the first 3 games you ever play. (Normal)"},
+    "cautious":     {"title": "Safety First", "desc": "Win a Blackjack hand having stood on 14 or less. (Normal)"},
+    "big_loss":     {"title": "Ouch", "desc": "Lose $1,000 or more in a single hand. (Normal)"},
+};
+
+// --- DOM Utilities (Terminal Emulator) ---
+const outputDiv = document.getElementById('game-container');
+const inputField = document.getElementById('cmd-input');
+
+function print(text) {
+    outputDiv.textContent += text + '\n';
+    outputDiv.scrollTop = outputDiv.scrollHeight;
+}
+
+function clear_screen() {
+    outputDiv.textContent = '';
+}
+
+function print_header(title) {
+    print("=".repeat(60));
+    let pad = Math.max(0, Math.floor((60 - title.length) / 2));
+    print(" ".repeat(pad) + title);
+    print("=".repeat(60));
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Mimics Python's input()
+function async_input(promptText) {
+    return new Promise((resolve) => {
+        print(promptText);
+        inputField.disabled = false;
+        inputField.focus();
+        
+        inputField.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                const val = inputField.value;
+                outputDiv.textContent += val + '\n'; 
+                inputField.value = '';
+                inputField.disabled = true;
+                inputField.onkeydown = null;
+                resolve(val);
+            }
+        };
+    });
+}
+
+// --- Class Definitions ---
+class Card {
+    constructor(suit, rank) {
+        this.suit = suit;
+        this.rank = rank;
+        this.value = VALUES[rank];
+    }
+    toString() {
+        return `${this.rank}${this.suit}`;
+    }
+    display_lines() {
+        let r = this.rank.padEnd(2, ' ');
+        return [
+            "┌─────────┐",
+            `│ ${r}      │`,
+            `│    ${this.suit}    │`,
+            `│      ${r} │`,
+            "└─────────┘"
+        ];
+    }
+}
+
+class Deck {
+    constructor() {
+        this.cards = [];
+        for (let s of SUITS) {
+            for (let r of RANKS) {
+                this.cards.push(new Card(s, r));
+            }
+        }
+        this.shuffle();
+    }
+    shuffle() {
+        for (let i = this.cards.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+        }
+    }
+    deal() {
+        return this.cards.length ? this.cards.pop() : null;
+    }
+}
+
+class Player {
+    constructor(name = "Ewan", money = 100) {
+        this.name = name;
+        this.money = money;
+        this.loan_debt = 0;
+        this.unlocked_achievements = new Set();
+        this.stats = { games_played: 0, wins: 0, losses: 0, pushes: 0, blackjack_count: 0 };
+    }
+
+    print_status() {
+        print(`💰 Wallet: $${this.money} | 🏦 Debt: $${this.loan_debt}`);
+    }
+
+    async unlock_achievement(key) {
+        if (ACHIEVEMENTS_DB[key] && !this.unlocked_achievements.has(key)) {
+            this.unlocked_achievements.add(key);
+            let data = ACHIEVEMENTS_DB[key];
+            print("\n" + "★".repeat(50));
+            print(`🏆 UNLOCKED: ${data.title} 🏆`);
+            print(`   ${data.desc}`);
+            print("★".repeat(50) + "\n");
+            await sleep(1500);
+        }
+    }
+
+    check_stats_achievements() {
+        if (this.stats.games_played >= 1) this.unlock_achievement("newbie");
+        if (this.stats.games_played >= 10) this.unlock_achievement("regular");
+        if (this.money === 0) this.unlock_achievement("broke");
+        if (this.money >= 2500) this.unlock_achievement("high_roller");
+    }
+}
+
+// --- Visual Utilities ---
+function show_hands(player_hand, dealer_hand, hide_dealer_card = false) {
+    let dealer_lines = [];
+    if (dealer_hand.length > 0) {
+        if (hide_dealer_card) {
+            const card_back = [
+                "┌─────────┐", 
+                "│░░░░░░░░░│", 
+                "│░░░???░░░│", 
+                "│░░░░░░░░░│", 
+                "└─────────┘"
+            ];
+            dealer_lines = [card_back].concat(dealer_hand.slice(1).map(c => c.display_lines()));
+        } else {
+            dealer_lines = dealer_hand.map(c => c.display_lines());
+        }
+        print("\n--- DEALER'S HAND ---");
+        for (let i = 0; i < 5; i++) {
+            print(dealer_lines.map(card => card[i]).join(" "));
+        }
+    }
+
+    print("\n--- YOUR HAND ---");
+    let player_lines = player_hand.map(c => c.display_lines());
+    for (let i = 0; i < 5; i++) {
+        print(player_lines.map(card => card[i]).join(" "));
+    }
+    print("");
+}
+
+// --- Blackjack Logic ---
+function calculate_bj_score(hand) {
+    let score = 0;
+    let aces = 0;
+    for (let card of hand) {
+        score += BJ_VALUES[card.rank];
+        if (card.rank === 'A') aces += 1;
+    }
+    while (score > 21 && aces > 0) {
+        score -= 10;
+        aces -= 1;
+    }
+    return score;
+}
+
+async function play_blackjack(player) {
+    let deck = new Deck();
+    clear_screen();
+    print_header("BLACKJACK");
+
+    let bet = 0;
+    while (true) {
+        player.print_status();
+        let bet_input = await async_input(`Place your bet (Max $${player.money}): `);
+        bet = parseInt(bet_input);
+        if (!isNaN(bet) && bet > 0 && bet <= player.money) break;
+        print("Invalid bet amount.\n");
+    }
+
+    let player_hand = [deck.deal(), deck.deal()];
+    let dealer_hand = [deck.deal(), deck.deal()];
+    let game_over = false;
+
+    while (!game_over) {
+        clear_screen();
+        print_header("BLACKJACK TABLE");
+        show_hands(player_hand, dealer_hand, true);
+        
+        let p_score = calculate_bj_score(player_hand);
+        print(`Your Score: ${p_score}`);
+
+        if (p_score === 21) {
+            print("Blackjack! 21!");
+            if (player_hand.length === 2) player.unlock_achievement("bj_native");
+            break;
+        } else if (p_score > 21) {
+            print("Bust! You went over 21.");
+            player.money -= bet;
+            player.stats.losses += 1;
+            player.stats.games_played += 1;
+            player.check_stats_achievements();
+            await async_input("\nPress Enter to continue...");
+            return;
+        }
+
+        let choice = await async_input("(H)it or (S)tand? ");
+        choice = choice.toLowerCase().trim();
+        
+        if (choice === 'h') {
+            player_hand.push(deck.deal());
+        } else if (choice === 's') {
+            break;
+        }
+    }
+
+    clear_screen();
+    print_header("BLACKJACK SHOWDOWN");
+    show_hands(player_hand, dealer_hand, false);
+    
+    let p_score = calculate_bj_score(player_hand);
+    let d_score = calculate_bj_score(dealer_hand);
+
+    while (d_score < 17) {
+        print("Dealer hits...");
+        await sleep(1000);
+        dealer_hand.push(deck.deal());
+        clear_screen();
+        print_header("BLACKJACK SHOWDOWN");
+        show_hands(player_hand, dealer_hand, false);
+        d_score = calculate_bj_score(dealer_hand);
+    }
+
+    print(`Your Score: ${p_score} | Dealer Score: ${d_score}`);
+
+    if (d_score > 21) {
+        print("Dealer Busted! You Win!");
+        player.money += bet;
+        player.stats.wins += 1;
+    } else if (d_score > p_score) {
+        print("Dealer Wins.");
+        player.money -= bet;
+        player.stats.losses += 1;
+    } else if (d_score < p_score) {
+        print("You Win!");
+        player.money += bet;
+        player.stats.wins += 1;
+    } else {
+        print("Push (Tie). Money returned.");
+        player.stats.pushes += 1;
+    }
+
+    player.stats.games_played += 1;
+    player.check_stats_achievements();
+    await async_input("\nPress Enter to return to menu...");
+}
+
+// --- Poker Logic ---
+function evaluate_poker_hand(hand) {
+    let ranks = hand.map(c => c.value).sort((a, b) => a - b);
+    let suits = hand.map(c => c.suit);
+    
+    let is_flush = suits.every(s => s === suits[0]);
+    let is_straight = (ranks[4] - ranks[0] === 4) && (new Set(ranks).size === 5);
+    
+    // A-2-3-4-5 straight check
+    if (!is_straight && ranks.join(',') === '2,3,4,5,14') {
+        is_straight = true;
+        ranks = [1, 2, 3, 4, 5]; 
+    }
+
+    let counts = {};
+    ranks.forEach(r => counts[r] = (counts[r] || 0) + 1);
+    let sorted_counts = Object.entries(counts)
+        .map(([r, c]) => [parseInt(r), c])
+        .sort((a, b) => b[1] - a[1] || b[0] - a[0]); 
+
+    if (is_straight && is_flush) {
+        if (ranks[4] === 14) return { score: 10, desc: "Royal Flush", tie: ranks };
+        return { score: 9, desc: "Straight Flush", tie: ranks };
+    }
+    if (sorted_counts[0][1] === 4) return { score: 8, desc: "Four of a Kind", tie: sorted_counts };
+    if (sorted_counts[0][1] === 3 && sorted_counts[1][1] === 2) return { score: 7, desc: "Full House", tie: sorted_counts };
+    if (is_flush) return { score: 6, desc: "Flush", tie: ranks };
+    if (is_straight) return { score: 5, desc: "Straight", tie: ranks };
+    if (sorted_counts[0][1] === 3) return { score: 4, desc: "Three of a Kind", tie: sorted_counts };
+    if (sorted_counts[0][1] === 2 && sorted_counts[1][1] === 2) return { score: 3, desc: "Two Pair", tie: sorted_counts };
+    if (sorted_counts[0][1] === 2) return { score: 2, desc: "One Pair", tie: sorted_counts };
+    return { score: 1, desc: "High Card", tie: ranks };
+}
+
+function compare_ties(tie1, tie2, score) {
+    if (score === 1 || score === 5 || score === 6 || score === 9) {
+        for(let i=4; i>=0; i--) {
+            if (tie1[i] !== tie2[i]) return tie1[i] - tie2[i];
+        }
+        return 0;
+    } else {
+        for(let i=0; i<tie1.length; i++) {
+            if (tie1[i][0] !== tie2[i][0]) return tie1[i][0] - tie2[i][0];
+        }
+        return 0;
+    }
+}
+
+async function play_poker(player) {
+    let deck = new Deck();
+    clear_screen();
+    print_header("5-CARD DRAW POKER");
+
+    let bet = 0;
+    while (true) {
+        player.print_status();
+        let bet_input = await async_input(`Place your ante (Max $${player.money}): `);
+        bet = parseInt(bet_input);
+        if (!isNaN(bet) && bet > 0 && bet <= player.money) break;
+        print("Invalid bet amount.\n");
+    }
+
+    let player_hand = [deck.deal(), deck.deal(), deck.deal(), deck.deal(), deck.deal()];
+    let dealer_hand = [deck.deal(), deck.deal(), deck.deal(), deck.deal(), deck.deal()];
+
+    clear_screen();
+    print_header("POKER - DRAW PHASE");
+    show_hands(player_hand, [], false);
+    
+    print("Which cards to discard? (e.g., '1 3 5'). Press Enter to keep all.");
+    let choice = await async_input("Indices (1-5): ");
+    
+    if (choice.trim() !== '') {
+        let indices = choice.split(' ').map(Number).map(n => n - 1).filter(n => n >= 0 && n < 5);
+        indices.sort((a, b) => b - a); // Sort descending to pop correctly
+        for (let idx of indices) {
+            player_hand.splice(idx, 1);
+        }
+        while (player_hand.length < 5) {
+            player_hand.push(deck.deal());
+        }
+    }
+
+    clear_screen();
+    print_header("POKER - SHOWDOWN");
+    show_hands(player_hand, dealer_hand, false);
+
+    let p_res = evaluate_poker_hand(player_hand);
+    let d_res = evaluate_poker_hand(dealer_hand);
+
+    print(`You have: ${p_res.desc}`);
+    print(`Dealer has: ${d_res.desc}`);
+    print("-".repeat(30));
+
+    if (p_res.score === 2) await player.unlock_achievement("poker_pair");
+    if (p_res.score === 6) await player.unlock_achievement("poker_flush");
+    if (p_res.score === 10) await player.unlock_achievement("poker_royal");
+
+    let win = false;
+    let tie_breaker = compare_ties(p_res.tie, d_res.tie, p_res.score);
+
+    if (p_res.score > d_res.score || (p_res.score === d_res.score && tie_breaker > 0)) {
+        print(`You Win $${bet}!`);
+        player.money += bet;
+        player.stats.wins += 1;
+    } else if (d_res.score > p_res.score || (p_res.score === d_res.score && tie_breaker < 0)) {
+        print("Dealer Wins.");
+        player.money -= bet;
+        player.stats.losses += 1;
+    } else {
+        print("It's a complete tie.");
+        player.stats.pushes += 1;
+    }
+
+    player.stats.games_played += 1;
+    player.check_stats_achievements();
+    await async_input("\nPress Enter to continue...");
+}
+
+// --- Main Menu Loop ---
+async function main() {
+    let player = new Player();
+    
+    while (true) {
+        clear_screen();
+        print_header("MAIN MENU");
+        player.print_status();
+        print("\n1. Play Blackjack");
+        print("2. Play 5-Card Draw Poker");
+        print("3. Visit Bank (Loans)");
+        print("4. View Achievements");
+        print("5. Quit");
+        
+        let choice = await async_input("\nSelect an option: ");
+        
+        if (choice === '1') {
+            await play_blackjack(player);
+        } else if (choice === '2') {
+            await play_poker(player);
+        } else if (choice === '3') {
+            print("\n[BANK] 1. Borrow | 2. Repay");
+            let bankChoice = await async_input("> ");
+            
+            if (bankChoice === '1') {
+                let amt = parseInt(await async_input("How much to borrow? > "));
+                if (!isNaN(amt) && amt > 0) {
+                    player.money += amt;
+                    player.loan_debt += amt;
+                    print(`Borrowed $${amt}.`);
+                    await player.unlock_achievement("borrower");
+                }
+            } else if (bankChoice === '2') {
+                if (player.loan_debt <= 0) {
+                    print("[BANK] You have no debt to repay!");
+                } else {
+                    let amt = parseInt(await async_input(`How much to repay? (Debt: $${player.loan_debt}) > `));
+                    if (!isNaN(amt) && amt > 0) {
+                        if (amt > player.money) {
+                            print("[BANK] You don't have enough cash!");
+                        } else {
+                            let actual_pay = Math.min(amt, player.loan_debt);
+                            player.money -= actual_pay;
+                            player.loan_debt -= actual_pay;
+                            print(`[BANK] Paid $${actual_pay}. Remaining debt: $${player.loan_debt}`);
+                            
+                            if (player.loan_debt === 0) await player.unlock_achievement("debt_free");
+                            if (actual_pay === 50000) await player.unlock_achievement("clean_slate");
+                        }
+                    }
+                }
+            }
+            await async_input("\nPress Enter to return...");
+            
+        } else if (choice === '4') {
+            clear_screen();
+            print_header("🏆 ACHIEVEMENTS 🏆");
+            print(`Progress: ${player.unlocked_achievements.size}\n`);
+            for (let [key, val] of Object.entries(ACHIEVEMENTS_DB)) {
+                let status = player.unlocked_achievements.has(key) ? "✅" : "🔒";
+                print(`${status} ${val.title.padEnd(20)} | ${val.desc}`);
+            }
+            await async_input("\nPress Enter to return...");
+        } else if (choice === '5') {
+            print("Thanks for playing!");
+            break;
+        }
+    }
+}
+
+// Start the game loop
+main();
+</script>
+</body>
+</html>
