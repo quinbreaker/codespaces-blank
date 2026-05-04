@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Casino Simulation - Full Edition</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #2c3e50; color: #ecf0f1; text-align: center; padding: 20px; }
+        #game-board { background-color: #27ae60; border: 5px solid #1e8449; border-radius: 10px; padding: 20px; max-width: 650px; margin: 0 auto; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+        .hand { font-size: 24px; background: white; color: black; padding: 10px; border-radius: 5px; min-height: 40px; margin: 10px 0; letter-spacing: 5px; }
+        button { background-color: #e74c3c; color: white; border: none; padding: 8px 16px; font-size: 16px; cursor: pointer; border-radius: 5px; margin: 5px; }
+        button:hover { background-color: #c0392b; }
+        button:disabled { background-color: #7f8c8d; cursor: not-allowed; }
+        input { padding: 8px; font-size: 16px; border-radius: 5px; border: none; width: 80px; text-align: center; }
+        .red-suit { color: red; } .black-suit { color: black; }
+        .nav-tabs { margin-bottom: 20px; }
+        .nav-tabs button { background-color: #34495e; }
+        .nav-tabs button.active { background-color: #f39c12; }
+        #messages { margin-top: 15px; font-weight: bold; color: #fff; background: #333; padding: 10px; border-radius: 5px; }
+        #achievements-log { margin-top: 15px; color: #f1c40f; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="game-board">
+        <div class="nav-tabs">
+            <button id="tab-bj" class="active" onclick="switchGame('blackjack')">♠ Blackjack</button>
+            <button id="tab-poker" onclick="switchGame('poker')">♣ 5-Card Draw Poker</button>
+        </div>
+        
+        <h3>Wallet: $<span id="wallet">100</span> | Mode: <span id="mode-text">Blackjack</span></h3>
+        
+        <div>
+            <label for="betInput">Place Bet: $</label>
+            <input type="number" id="betInput" min="1" max="100" value="10">
+            <button id="dealBtn" onclick="startGame()">Deal</button>
+        </div>
+
+        <hr>
+
+        <div id="dealer-area">
+            <h3>Dealer's Hand</h3>
+            <div id="dealer-hand" class="hand"></div>
+        </div>
+
+        <div>
+            <h3>Your Hand (<span id="player-score-display">0</span>)</h3>
+            <div id="player-hand" class="hand"></div>
+        </div>
+
+        <div id="bj-controls">
+            <button id="hitBtn" onclick="hit()" disabled>Hit</button>
+            <button id="standBtn" onclick="stand()" disabled>Stand</button>
+        </div>
+        
+        <div id="poker-controls" style="display:none;">
+            <p style="font-size: 14px; margin: 5px;">Type indices (1-5) separated by spaces to discard, then confirm.</p>
+            <input type="text" id="discardInput" placeholder="e.g. 1 3 5" style="width:120px;" disabled>
+            <button id="drawBtn" onclick="drawPhase()" disabled>Draw / Confirm</button>
+        </div>
+
+        <div id="messages">Welcome to the Virtual Casino!</div>
+        <div id="achievements-log"></div>
+    </div>
+
+    <script>
+        // --- 1. Constants & Databases ---
+        const SUITS = ['♠', '♥', '♦', '♣'];
+        const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+        const BJ_VALUES = { '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':10, 'Q':10, 'K':10, 'A':11 };
+        const POKER_VALUES = { '2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14 };
+
+        // Translated Achievement Database (Sampled for brevity, easy to add the rest)
+        const ACHIEVEMENTS_DB = {
+            "newbie": { title: "Welcome To The Casino", desc: "Play your first game." },
+            "addict": { title: "Can't Stop", desc: "Play 100 games." },
+            "high_roller": { title: "High Roller", desc: "Accumulate $2,500." },
+            "broke": { title: "Back To The Bank", desc: "Hit $0 balance." },
+            "penny_pincher": { title: "Cowards Bet", desc: "Bet exactly $1." },
+            "all_in": { title: "Lets Go Gambling", desc: "Bet your entire wallet balance." },
+            "streak_3": { title: "Lucky Streak", desc: "Win 3 games in a row." },
+            "poker_pair": { title: "A Little Something", desc: "Get One Pair." },
+            "poker_flush": { title: "Suited Up", desc: "Get a Flush." }
+        };
+
+        // --- 2. State & Stats Tracking ---
+        let money = 100;
+        let currentBet = 0;
+        let currentGame = 'blackjack'; // 'blackjack' or 'poker'
+        let deck = [], playerHand = [], dealerHand = [];
+        let unlockedAchievements = new Set();
+        
+        let stats = {
+            gamesPlayed: 0, wins: 0, losses: 0, pushes: 0, currentStreak: 0
+        };
+
+        // --- 3. UI Toggles ---
+        function switchGame(gameType) {
+            currentGame = gameType;
+            document.getElementById('tab-bj').className = (gameType === 'blackjack') ? 'active' : '';
+            document.getElementById('tab-poker').className = (gameType === 'poker') ? 'active' : '';
+            document.getElementById('mode-text').innerText = (gameType === 'blackjack') ? 'Blackjack' : '5-Card Draw Poker';
+            
+            document.getElementById('bj-controls').style.display = (gameType === 'blackjack') ? 'block' : 'none';
+            document.getElementById('poker-controls').style.display = (gameType === 'poker') ? 'block' : 'none';
+            
+            // Hide dealer in poker until showdown
+            document.getElementById('dealer-area').style.display = (gameType === 'poker') ? 'none' : 'block';
+            resetBoard();
+        }
+
+        // --- 4. Core Engine ---
+        function createDeck() {
+            deck = [];
+            for (let suit of SUITS) for (let rank of RANKS) deck.push({ suit, rank });
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+        }
+
+        function formatCard(card) {
+            const colorClass = (card.suit === '♥' || card.suit === '♦') ? 'red-suit' : 'black-suit';
+            return `<span class="${colorClass}">${card.rank}${card.suit}</span>`;
+        }
+
+        function renderHands(hideDealer) {
+            document.getElementById('player-hand').innerHTML = playerHand.map(formatCard).join(' ');
+            if (currentGame === 'blackjack') {
+                document.getElementById('player-score-display').innerText = calculateBJScore(playerHand);
+                if (hideDealer) {
+                    document.getElementById('dealer-hand').innerHTML = formatCard(dealerHand[0]) + " 🂠";
+                } else {
+                    document.getElementById('dealer-hand').innerHTML = dealerHand.map(formatCard).join(' ');
+                }
+            } else {
+                // Poker Score Display
+                document.getElementById('player-score-display').innerText = evaluatePokerHand(playerHand).desc;
+                if (!hideDealer) {
+                    document.getElementById('dealer-area').style.display = 'block';
+                    document.getElementById('dealer-hand').innerHTML = dealerHand.map(formatCard).join(' ');
+                }
+            }
+        }
+
+        function startGame() {
+            currentBet = parseInt(document.getElementById('betInput').value);
+            if (isNaN(currentBet) || currentBet <= 0 || currentBet > money) {
+                return showMessage("Invalid bet amount!");
+            }
+            
+            createDeck();
+            stats.gamesPlayed++;
+            document.getElementById('dealBtn').disabled = true;
+            document.getElementById('betInput').disabled = true;
+
+            if (currentGame === 'blackjack') {
+                playerHand = [deck.pop(), deck.pop()];
+                dealerHand = [deck.pop(), deck.pop()];
+                document.getElementById('hitBtn').disabled = false;
+                document.getElementById('standBtn').disabled = false;
+                renderHands(true);
+                showMessage("Blackjack: Hit or Stand?");
+            } else {
+                playerHand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()];
+                dealerHand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()];
+                document.getElementById('discardInput').disabled = false;
+                document.getElementById('discardInput').value = "";
+                document.getElementById('drawBtn').disabled = false;
+                renderHands(true);
+                showMessage("Poker: Enter card positions (1-5) to discard, then draw.");
+            }
+            processAchievements();
+        }
+
+        // --- 5. Blackjack Logic ---
+        function calculateBJScore(hand) {
+            let score = 0, aces = 0;
+            for (let c of hand) { score += BJ_VALUES[c.rank]; if (c.rank === 'A') aces++; }
+            while (score > 21 && aces > 0) { score -= 10; aces--; }
+            return score;
+        }
+
+        function hit() {
+            playerHand.push(deck.pop());
+            renderHands(true);
+            if (calculateBJScore(playerHand) > 21) resolveGame(-1, "Bust! You lose.");
+        }
+
+        function stand() {
+            let dealerScore = calculateBJScore(dealerHand);
+            while (dealerScore < 17) {
+                dealerHand.push(deck.pop());
+                dealerScore = calculateBJScore(dealerHand);
+            }
+            renderHands(false);
+            let playerScore = calculateBJScore(playerHand);
+            
+            if (dealerScore > 21 || playerScore > dealerScore) resolveGame(1, "You win!");
+            else if (dealerScore > playerScore) resolveGame(-1, "Dealer wins.");
+            else resolveGame(0, "Push (Tie).");
+        }
+
+        // --- 6. Poker Logic (Translated from Python) ---
+        function evaluatePokerHand(hand) {
+            let ranks = hand.map(c => POKER_VALUES[c.rank]).sort((a,b) => a-b);
+            let suits = hand.map(c => c.suit);
+            
+            // Count frequencies
+            let counts = {};
+            ranks.forEach(r => counts[r] = (counts[r] || 0) + 1);
+            let countArr = Object.entries(counts).map(([r, c]) => ({rank: parseInt(r), count: c}))
+                                 .sort((a,b) => b.count - a.count || b.rank - a.rank);
+
+            let isFlush = new Set(suits).size === 1;
+            let isStraight = (ranks[4] - ranks[0] === 4) && (new Set(ranks).size === 5);
+
+            if (!isStraight && ranks.join(',') === '2,3,4,5,14') isStraight = true; // Low Ace Straight
+
+            if (isStraight && isFlush) return { score: ranks[4] === 14 ? 10 : 9, desc: ranks[4] === 14 ? "Royal Flush" : "Straight Flush" };
+            if (countArr[0].count === 4) return { score: 8, desc: "Four of a Kind" };
+            if (countArr[0].count === 3 && countArr[1].count === 2) return { score: 7, desc: "Full House" };
+            if (isFlush) return { score: 6, desc: "Flush" };
+            if (isStraight) return { score: 5, desc: "Straight" };
+            if (countArr[0].count === 3) return { score: 4, desc: "Three of a Kind" };
+            if (countArr[0].count === 2 && countArr[1].count === 2) return { score: 3, desc: "Two Pair" };
+            if (countArr[0].count === 2) return { score: 2, desc: "One Pair" };
+            return { score: 1, desc: "High Card" };
+        }
+
+        function drawPhase() {
+            let input = document.getElementById('discardInput').value.trim();
+            if (input) {
+                // Parse indices, sort descending so popping doesn't shift remaining targets
+                let indices = input.split(' ').map(n => parseInt(n) - 1).filter(n => n >= 0 && n < 5).sort((a,b) => b-a);
+                for (let idx of indices) playerHand.splice(idx, 1);
+                while(playerHand.length < 5) playerHand.push(deck.pop());
+            }
+            
+            document.getElementById('discardInput').disabled = true;
+            document.getElementById('drawBtn').disabled = true;
+            renderHands(false); // Showdown
+
+            let pEval = evaluatePokerHand(playerHand);
+            let dEval = evaluatePokerHand(dealerHand);
+            
+            showMessage(`You: ${pEval.desc} | Dealer: ${dEval.desc}`);
+            
+            // Check specific poker achievements
+            if (pEval.score === 2) unlock("poker_pair");
+            if (pEval.score === 6) unlock("poker_flush");
+            
+            setTimeout(() => {
+                if (pEval.score > dEval.score) resolveGame(1, `You win with ${pEval.desc}!`);
+                else if (dEval.score > pEval.score) resolveGame(-1, `Dealer wins with ${dEval.desc}.`);
+                else resolveGame(0, "It's a tie!");
+            }, 1500);
+        }
+
+        // --- 7. Resolution & Achievements ---
+        function resolveGame(result, msg) {
+            document.getElementById('hitBtn').disabled = true;
+            document.getElementById('standBtn').disabled = true;
+            document.getElementById('dealBtn').disabled = false;
+            document.getElementById('betInput').disabled = false;
+
+            if (result === 1) {
+                money += currentBet;
+                stats.wins++;
+                stats.currentStreak = stats.currentStreak > 0 ? stats.currentStreak + 1 : 1;
+            } else if (result === -1) {
+                money -= currentBet;
+                stats.losses++;
+                stats.currentStreak = stats.currentStreak < 0 ? stats.currentStreak - 1 : -1;
+            } else {
+                stats.pushes++;
+                stats.currentStreak = 0;
+            }
+
+            document.getElementById('wallet').innerText = money;
+            document.getElementById('betInput').max = money;
+            showMessage(msg);
+            processAchievements();
+        }
+
+        function resetBoard() {
+            playerHand = []; dealerHand = [];
+            document.getElementById('player-hand').innerHTML = '';
+            document.getElementById('dealer-hand').innerHTML = '';
+            document.getElementById('player-score-display').innerText = '0';
+        }
+
+        function showMessage(msg) {
+            document.getElementById('messages').innerText = msg;
+        }
+
+        function unlock(id) {
+            if (ACHIEVEMENTS_DB[id] && !unlockedAchievements.has(id)) {
+                unlockedAchievements.add(id);
+                const log = document.getElementById('achievements-log');
+                log.innerHTML += `<div>🏆 Unlocked: ${ACHIEVEMENTS_DB[id].title} - ${ACHIEVEMENTS_DB[id].desc}</div>`;
+                setTimeout(() => { log.innerHTML = ''; }, 5000);
+            }
+        }
+
+        function processAchievements() {
+            // General Stats
+            if (stats.gamesPlayed >= 1) unlock("newbie");
+            if (stats.gamesPlayed >= 100) unlock("addict");
+            if (stats.currentStreak >= 3) unlock("streak_3");
+            
+            // Wealth & Betting
+            if (money === 0) unlock("broke");
+            if (money >= 2500) unlock("high_roller");
+            if (currentBet === 1) unlock("penny_pincher");
+            if (currentBet === money && money > 0) unlock("all_in");
+        }
+    </script>
+</body>
+</html>
